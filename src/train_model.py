@@ -158,7 +158,7 @@ def evaluate(name: str, y: pd.Series, amount: pd.Series, score: np.ndarray, flag
 # ------------------------------------------------------------- 7. publish
 def publish_scores(df: pd.DataFrame) -> None:
     ddl = """
-        DROP TABLE IF EXISTS insureguard.txn_risk_scores;
+        DROP TABLE IF EXISTS insureguard.txn_risk_scores CASCADE;  -- bi views are rebuilt by build_bi.py
         CREATE TABLE insureguard.txn_risk_scores (
             transaction_id           VARCHAR(12)   NOT NULL PRIMARY KEY
                                      REFERENCES insureguard.fact_transaction (transaction_id),

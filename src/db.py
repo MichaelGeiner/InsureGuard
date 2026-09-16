@@ -29,4 +29,4 @@ def connect(dbname: str | None = None, **kwargs) -> psycopg.Connection:
 
 
 def run_sql_file(conn: psycopg.Connection, name: str) -> None:
-    conn.execute((ROOT / "sql" / name).read_text(encoding="utf-8"))
+    conn.execute((ROOT / "sql" / name).read_text(encoding="utf-8-sig"))  # tolerate BOMs from Windows editors

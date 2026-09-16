@@ -1,0 +1,29 @@
+{
+  "name": "InsureGuard",
+  "dataColors": ["#1F6FB2", "#13837A", "#D64545", "#E3A33B", "#7A5CB8", "#9AA5B1", "#0B2545", "#5BB5A2"],
+  "background": "#FFFFFF",
+  "foreground": "#1B2733",
+  "tableAccent": "#0B2545",
+  "good": "#13837A",
+  "neutral": "#E3A33B",
+  "bad": "#D64545",
+  "maximum": "#D64545",
+  "center": "#E3A33B",
+  "minimum": "#13837A",
+  "textClasses": {
+    "title": { "fontFace": "Segoe UI Semibold", "fontSize": 13, "color": "#1B2733" },
+    "header": { "fontFace": "Segoe UI Semibold", "fontSize": 11, "color": "#1B2733" },
+    "label": { "fontFace": "Segoe UI", "fontSize": 10, "color": "#52606D" },
+    "callout": { "fontFace": "Segoe UI Semibold", "fontSize": 26, "color": "#0B2545" }
+  },
+  "visualStyles": {
+    "page": { "*": { "background": [{ "color": { "solid": { "color": "#F4F6F9" } }, "transparency": 0 }] } },
+    "*": {
+      "*": {
+        "background": [{ "show": true, "color": { "solid": { "color": "#FFFFFF" } }, "transparency": 0 }],
+        "border": [{ "show": true, "color": { "solid": { "color": "#E1E6EC" } }, "radius": 8 }],
+        "dropShadow": [{ "show": false }]
+      }
+    }
+  }
+}

@@ -17,7 +17,7 @@
 -- RANGE ... INTERVAL window frames work the same on both.
 -- =====================================================================
 
-DROP TABLE IF EXISTS insureguard.txn_features;
+DROP TABLE IF EXISTS insureguard.txn_features CASCADE;
 
 CREATE TABLE insureguard.txn_features AS
 WITH windowed AS (

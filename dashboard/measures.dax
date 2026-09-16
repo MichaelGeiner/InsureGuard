@@ -1,0 +1,75 @@
+// =====================================================================
+// InsureGuard | DAX measures
+// Create in Power BI: select the `_Measures` table, then
+// Home > New measure, paste ONE measure at a time (name = text before "=").
+// Assumes the imported tables were renamed to drop the "bi " prefix
+// (fact_transactions, dim_customer, dim_date, model_performance, scenario_recall).
+// =====================================================================
+
+
+// ---------- Volume ----------
+Total Transactions = COUNTROWS ( fact_transactions )
+
+Total Volume = SUM ( fact_transactions[amount] )
+
+
+// ---------- Fraud exposure ----------
+Fraud Transactions =
+CALCULATE ( [Total Transactions], fact_transactions[is_fraud] = TRUE () )
+
+Fraud Exposure =
+CALCULATE ( [Total Volume], fact_transactions[is_fraud] = TRUE () )
+
+Fraud Rate = DIVIDE ( [Fraud Transactions], [Total Transactions] )
+
+
+// ---------- Model impact ----------
+Fraud Prevented =
+CALCULATE ( [Total Volume], fact_transactions[outcome] = "Fraud Prevented" )
+
+Fraud Missed =
+CALCULATE ( [Total Volume], fact_transactions[outcome] = "Fraud Missed" )
+
+Prevention Rate = DIVIDE ( [Fraud Prevented], [Fraud Exposure] )
+
+
+// ---------- Alert quality ----------
+Flagged Alerts =
+CALCULATE ( [Total Transactions], fact_transactions[is_flagged] = TRUE () )
+
+Critical Alerts =
+CALCULATE ( [Total Transactions], fact_transactions[risk_tier] = "Critical" )
+
+Frauds Caught =
+CALCULATE ( [Total Transactions], fact_transactions[outcome] = "Fraud Prevented" )
+
+False Alarms =
+CALCULATE ( [Total Transactions], fact_transactions[outcome] = "False Alarm" )
+
+Alert Precision = DIVIDE ( [Frauds Caught], [Flagged Alerts] )
+
+Fraud Catch Rate = DIVIDE ( [Frauds Caught], [Fraud Transactions] )
+
+False Positive Rate =
+DIVIDE (
+    [False Alarms],
+    CALCULATE ( [Total Transactions], fact_transactions[is_fraud] = FALSE () )
+)
+
+Avg Risk Score = AVERAGE ( fact_transactions[anomaly_risk_score] )
+
+
+// ---------- Business case ----------
+// Assumption: each analyst review of an alert costs $5 (adjust to taste).
+Review Cost = [Flagged Alerts] * 5
+
+Net Savings = [Fraud Prevented] - [Review Cost]
+
+Fraud Prevented per Alert = DIVIDE ( [Fraud Prevented], [Flagged Alerts] )
+
+
+// ---------- Dynamic titles ----------
+Report Subtitle =
+"Model " & SELECTEDVALUE ( fact_transactions[model_version], "v1.0" )
+    & "  |  " & SELECTEDVALUE ( fact_transactions[model_period], "All periods" )
+    & "  |  " & FORMAT ( [Total Transactions], "#,0" ) & " transactions scored"
