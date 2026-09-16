@@ -2,7 +2,7 @@
 
 **End-to-end financial fraud and anomaly detection pipeline:** synthetic transaction data, PostgreSQL feature engineering, machine learning risk scoring, and an executive fraud exposure dashboard.
 
-> Status: Step 1 of 5 complete (data + database). Built in public, step by step.
+> Status: Step 2 of 5 complete (data, database, SQL features). Built in public, step by step.
 
 ## Pipeline
 
@@ -36,13 +36,52 @@ Key insight: the median fraudulent transaction ($4.46) is *smaller* than the med
 
 DDL is PostgreSQL and Snowflake compatible. A composite index on `(customer_id, txn_timestamp)` supports the window functions used for feature engineering.
 
+## Step 2: SQL feature engineering
+
+[`sql/02_features.sql`](sql/02_features.sql) builds `insureguard.txn_features` (100,000 rows in about 2.5 seconds) using PostgreSQL window functions with time-based `RANGE` frames. Every feature uses only the customer's history up to that transaction, so nothing from the future leaks into the model.
+
+| Family | Features | Technique |
+|---|---|---|
+| Rolling spend | `avg_amount_7d`, `avg_amount_30d`, `amount_to_avg_7d_ratio`, `amount_to_avg_30d_ratio` | `RANGE BETWEEN INTERVAL '30 days' PRECEDING`, current row excluded from the baseline |
+| Velocity | `txn_count_1h`, `txn_count_24h`, `amount_sum_1h`, `amount_sum_24h` | sliding time windows per customer |
+| Geographic jump | `km_from_prev_txn`, `minutes_since_prev_txn`, `geo_velocity_kmh`, `km_from_home` | `LAG()` + haversine distance in SQL |
+| Device and context | `device_age_hours`, `hour_of_day`, `day_of_week`, `is_night`, `is_online` | first-seen device timestamp per account |
+
+### Validation: each fraud pattern separates on its target feature
+
+Medians per scenario from [`sql/03_feature_validation.sql`](sql/03_feature_validation.sql):
+
+| Scenario | Spend vs 30d avg | Txns in 1h | Geo velocity (km/h) | Device age (hours) | Night share |
+|---|---:|---:|---:|---:|---:|
+| Legitimate | 0.75x | 1 | 0.1 | 1,824 | 2% |
+| Card testing | 0.14x | **5** | 158.5 | **0.16** | 3% |
+| Account takeover | 1.64x | 2 | 24.6 | **0.36** | 1% |
+| High-value night | **6.38x** | 1 | 0.1 | 993 | **92%** |
+| Impossible travel | 2.43x | 1 | **2,603** | **0.00** | 6% |
+
 ## Quick start
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env          # then set your PostgreSQL password
-python src/generate_data.py   # writes data/raw/*.csv
-python src/load_to_postgres.py
+cp .env.example .env            # then set your PostgreSQL password
+python src/generate_data.py     # Step 1: writes data/raw/*.csv
+python src/load_to_postgres.py  # Step 1: schema + bulk load
+python src/build_features.py    # Step 2: feature table + validation report
+```
+
+## Project structure
+
+```
+InsureGuard/
+├── sql/
+│   ├── 01_schema.sql              star schema DDL
+│   ├── 02_features.sql            window-function feature engineering
+│   └── 03_feature_validation.sql  per-scenario feature medians
+└── src/
+    ├── db.py                      shared connection helpers
+    ├── generate_data.py           synthetic data generator
+    ├── load_to_postgres.py        COPY-based bulk loader
+    └── build_features.py          runs feature SQL + prints validation
 ```
 
 ## Tech stack
