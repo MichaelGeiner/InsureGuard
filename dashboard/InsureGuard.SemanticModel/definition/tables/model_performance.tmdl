@@ -23,27 +23,25 @@ table model_performance
 
 	column roc_auc
 		dataType: double
+		formatString: 0.000
 		lineageTag: e70f5294-38a2-47cc-bbdc-3cf58e95dcdd
 		summarizeBy: sum
 		sourceColumn: roc_auc
 
 		annotation SummarizationSetBy = Automatic
 
-		annotation PBI_FormatHint = {"isGeneralNumber":true}
-
 	column pr_auc
 		dataType: double
+		formatString: 0.000
 		lineageTag: 90fdfa6e-2e53-4b80-bfec-0a0a3c78edc8
 		summarizeBy: sum
 		sourceColumn: pr_auc
 
 		annotation SummarizationSetBy = Automatic
 
-		annotation PBI_FormatHint = {"isGeneralNumber":true}
-
 	column flagged_txns
 		dataType: int64
-		formatString: 0
+		formatString: #,0
 		lineageTag: 568a7c4a-1302-4e0f-9a5a-cbfca0b91993
 		summarizeBy: sum
 		sourceColumn: flagged_txns
@@ -52,63 +50,57 @@ table model_performance
 
 	column precision_rate
 		dataType: double
+		formatString: 0.0%;-0.0%;0.0%
 		lineageTag: 89c87b61-cda5-4821-9ea4-67fba2176342
 		summarizeBy: sum
 		sourceColumn: precision_rate
 
 		annotation SummarizationSetBy = Automatic
 
-		annotation PBI_FormatHint = {"isGeneralNumber":true}
-
 	column recall_rate
 		dataType: double
+		formatString: 0.0%;-0.0%;0.0%
 		lineageTag: 41980eac-defc-43e7-a374-cc0fc1753fd2
 		summarizeBy: sum
 		sourceColumn: recall_rate
 
 		annotation SummarizationSetBy = Automatic
 
-		annotation PBI_FormatHint = {"isGeneralNumber":true}
-
 	column false_positive_rate
 		dataType: double
+		formatString: 0.00%;-0.00%;0.00%
 		lineageTag: 266a0694-da5b-499f-b314-3d92b8acb742
 		summarizeBy: sum
 		sourceColumn: false_positive_rate
 
 		annotation SummarizationSetBy = Automatic
 
-		annotation PBI_FormatHint = {"isGeneralNumber":true}
-
 	column fraud_dollars
 		dataType: double
+		formatString: \$#,0;(\$#,0);\$#,0
 		lineageTag: fe02d9eb-9ed2-4675-8cc7-f1f1c41f06ff
 		summarizeBy: sum
 		sourceColumn: fraud_dollars
 
 		annotation SummarizationSetBy = Automatic
 
-		annotation PBI_FormatHint = {"isGeneralNumber":true}
-
 	column fraud_dollars_caught
 		dataType: double
+		formatString: \$#,0;(\$#,0);\$#,0
 		lineageTag: f359ac49-9ab4-4280-a1f1-6a97ba36f835
 		summarizeBy: sum
 		sourceColumn: fraud_dollars_caught
 
 		annotation SummarizationSetBy = Automatic
 
-		annotation PBI_FormatHint = {"isGeneralNumber":true}
-
 	column dollar_recall
 		dataType: double
+		formatString: 0.0%;-0.0%;0.0%
 		lineageTag: c522af04-d2fe-4c68-a7f6-ea946cf6e2eb
 		summarizeBy: sum
 		sourceColumn: dollar_recall
 
 		annotation SummarizationSetBy = Automatic
-
-		annotation PBI_FormatHint = {"isGeneralNumber":true}
 
 	partition model_performance = m
 		mode: import

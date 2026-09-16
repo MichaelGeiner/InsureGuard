@@ -1,0 +1,82 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.4.0/schema.json",
+  "name": "ig_p3_notes",
+  "position": {
+    "x": 1400,
+    "y": 730,
+    "z": 6000,
+    "height": 330,
+    "width": 480,
+    "tabOrder": 6000
+  },
+  "visual": {
+    "visualType": "textbox",
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "paragraphs": [
+              {
+                "textRuns": [
+                  {
+                    "value": "How the model was built",
+                    "textStyle": {
+                      "fontWeight": "bold",
+                      "fontSize": "13pt",
+                      "color": "#0B2545"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "•  Isolation Forest (unsupervised) + XGBoost (supervised), blended 20/80 into a 0 to 100 risk score.",
+                    "textStyle": {
+                      "fontSize": "11pt",
+                      "color": "#1B2733"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "•  Out-of-time validation: no future data used in training or features.",
+                    "textStyle": {
+                      "fontSize": "11pt",
+                      "color": "#1B2733"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "•  1.2% fraud rate handled with class weighting instead of SMOTE, so every training row stays real.",
+                    "textStyle": {
+                      "fontSize": "11pt",
+                      "color": "#1B2733"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "•  Limitation: friendly fraud (customers disputing their own purchases) leaves no behavioral signal and needs chargeback investigation.",
+                    "textStyle": {
+                      "fontSize": "11pt",
+                      "color": "#1B2733"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

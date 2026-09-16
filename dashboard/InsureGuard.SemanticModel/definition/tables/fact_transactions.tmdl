@@ -61,13 +61,12 @@ table fact_transactions
 
 	column amount
 		dataType: double
+		formatString: \$#,0.00;(\$#,0.00);\$#,0.00
 		lineageTag: 13fb2014-f357-482c-b252-fd2309edca57
 		summarizeBy: sum
 		sourceColumn: amount
 
 		annotation SummarizationSetBy = Automatic
-
-		annotation PBI_FormatHint = {"isGeneralNumber":true}
 
 	column merchant_category
 		dataType: string
@@ -248,43 +247,39 @@ table fact_transactions
 
 	column amount_to_avg_30d_ratio
 		dataType: double
+		formatString: 0.0
 		lineageTag: 0de14014-4275-4c25-a7a5-62413f1045f7
 		summarizeBy: sum
 		sourceColumn: amount_to_avg_30d_ratio
 
 		annotation SummarizationSetBy = Automatic
 
-		annotation PBI_FormatHint = {"isGeneralNumber":true}
-
 	column geo_velocity_kmh
 		dataType: double
+		formatString: #,0
 		lineageTag: 29fc4c6e-11d7-4930-845d-8a8550849344
 		summarizeBy: sum
 		sourceColumn: geo_velocity_kmh
 
 		annotation SummarizationSetBy = Automatic
 
-		annotation PBI_FormatHint = {"isGeneralNumber":true}
-
 	column km_from_home
 		dataType: double
+		formatString: #,0
 		lineageTag: 317d8f97-5781-4235-9e64-c4145894e8fa
 		summarizeBy: sum
 		sourceColumn: km_from_home
 
 		annotation SummarizationSetBy = Automatic
 
-		annotation PBI_FormatHint = {"isGeneralNumber":true}
-
 	column device_age_hours
 		dataType: double
+		formatString: #,0.0
 		lineageTag: f069abfd-e127-4f2f-b6ad-a9936f6c6fed
 		summarizeBy: sum
 		sourceColumn: device_age_hours
 
 		annotation SummarizationSetBy = Automatic
-
-		annotation PBI_FormatHint = {"isGeneralNumber":true}
 
 	partition fact_transactions = m
 		mode: import

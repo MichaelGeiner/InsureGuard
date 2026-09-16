@@ -31,13 +31,12 @@ table scenario_recall
 
 	column recall_rate
 		dataType: double
+		formatString: 0%;-0%;0%
 		lineageTag: 8a469dc5-f600-4f21-ba7d-c20d59d5a6b9
 		summarizeBy: sum
 		sourceColumn: recall_rate
 
 		annotation SummarizationSetBy = Automatic
-
-		annotation PBI_FormatHint = {"isGeneralNumber":true}
 
 	partition scenario_recall = m
 		mode: import
