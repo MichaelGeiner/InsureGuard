@@ -1,0 +1,124 @@
+{
+  "model_version": "v1.0",
+  "split": {
+    "train": "2026-01-01 to 2026-03-31",
+    "valid": "2026-04",
+    "test": "2026-05-01 to 2026-06-30"
+  },
+  "flag_threshold": 60,
+  "blend": {
+    "xgboost": 0.8,
+    "isolation_forest": 0.2
+  },
+  "xgboost_trees": 95,
+  "test_results": [
+    {
+      "model": "rule: amount >= $500",
+      "roc_auc": 0.4828,
+      "pr_auc": 0.0191,
+      "flagged_txns": 367,
+      "precision": 0.038,
+      "recall": 0.037,
+      "false_positive_rate": 0.0108,
+      "fraud_dollars": 41997.86,
+      "fraud_dollars_caught": 8819.28,
+      "dollar_recall": 0.21,
+      "recall_by_scenario": {
+        "account_takeover": 0.067,
+        "card_testing": 0.0,
+        "friendly_fraud": 0.0,
+        "high_value_spend": 0.2,
+        "impossible_travel": 0.04
+      }
+    },
+    {
+      "model": "isolation_forest",
+      "roc_auc": 0.8715,
+      "pr_auc": 0.1174,
+      "flagged_txns": 361,
+      "precision": 0.219,
+      "recall": 0.208,
+      "false_positive_rate": 0.0086,
+      "fraud_dollars": 41997.86,
+      "fraud_dollars_caught": 17054.63,
+      "dollar_recall": 0.406,
+      "recall_by_scenario": {
+        "account_takeover": 0.328,
+        "card_testing": 0.099,
+        "friendly_fraud": 0.0,
+        "high_value_spend": 0.5,
+        "impossible_travel": 0.32
+      }
+    },
+    {
+      "model": "xgboost",
+      "roc_auc": 0.9868,
+      "pr_auc": 0.8678,
+      "flagged_txns": 497,
+      "precision": 0.648,
+      "recall": 0.847,
+      "false_positive_rate": 0.0053,
+      "fraud_dollars": 41997.86,
+      "fraud_dollars_caught": 34058.15,
+      "dollar_recall": 0.811,
+      "recall_by_scenario": {
+        "account_takeover": 0.896,
+        "card_testing": 0.959,
+        "friendly_fraud": 0.1,
+        "high_value_spend": 0.6,
+        "impossible_travel": 0.92
+      }
+    },
+    {
+      "model": "insureguard_blend",
+      "roc_auc": 0.9864,
+      "pr_auc": 0.8603,
+      "flagged_txns": 361,
+      "precision": 0.85,
+      "recall": 0.808,
+      "false_positive_rate": 0.0016,
+      "fraud_dollars": 41997.86,
+      "fraud_dollars_caught": 31711.36,
+      "dollar_recall": 0.755,
+      "recall_by_scenario": {
+        "account_takeover": 0.821,
+        "card_testing": 0.959,
+        "friendly_fraud": 0.0,
+        "high_value_spend": 0.55,
+        "impossible_travel": 0.88
+      }
+    }
+  ],
+  "feature_importance": {
+    "geo_velocity_kmh": 0.20270000398159027,
+    "minutes_since_prev_txn": 0.09560000151395798,
+    "is_online": 0.05959999933838844,
+    "device_age_hours": 0.054099999368190765,
+    "txn_count_1h": 0.04600000008940697,
+    "cat_entertainment": 0.041999999433755875,
+    "amount_sum_24h": 0.04050000011920929,
+    "cat_travel": 0.039000000804662704,
+    "cat_electronics": 0.03290000185370445,
+    "is_night": 0.030400000512599945,
+    "has_history": 0.027899999171495438,
+    "cat_grocery": 0.02370000071823597,
+    "cat_restaurants": 0.023399999365210533,
+    "cat_utilities": 0.022099999710917473,
+    "amount_sum_1h": 0.02070000022649765,
+    "amount_to_avg_30d_ratio": 0.020500000566244125,
+    "hour_of_day": 0.0203000009059906,
+    "km_from_prev_txn": 0.019500000402331352,
+    "cat_retail": 0.019500000402331352,
+    "km_from_home": 0.018400000408291817,
+    "cat_gas": 0.016499999910593033,
+    "cat_health": 0.016499999910593033,
+    "amount": 0.01640000008046627,
+    "customer_txn_seq": 0.016200000420212746,
+    "avg_amount_30d": 0.01489999983459711,
+    "cat_gift_cards": 0.014800000004470348,
+    "avg_amount_7d": 0.014600000344216824,
+    "amount_to_avg_7d_ratio": 0.012900000438094139,
+    "day_of_week": 0.011699999682605267,
+    "txn_count_24h": 0.006800000090152025
+  }
+}

@@ -2,7 +2,20 @@
 
 **End-to-end financial fraud and anomaly detection pipeline:** synthetic transaction data, PostgreSQL feature engineering, machine learning risk scoring, and an executive fraud exposure dashboard.
 
-> Status: Step 2 of 5 complete (data, database, SQL features). Built in public, step by step.
+> Status: Step 3 of 5 complete (data, SQL features, ML risk scoring). Built in public, step by step.
+
+## Results at a glance
+
+On two months of transactions the models never saw during training (May to June 2026):
+
+| | Simple rule (amount >= $500) | **InsureGuard** |
+|---|---:|---:|
+| Fraud transactions caught (recall) | 3.7% | **80.8%** |
+| Alerts that are real fraud (precision) | 3.8% | **85.0%** |
+| Fraud dollars caught | 21.0% | **75.5%** |
+| Legitimate customers wrongly flagged | 1.08% | **0.16%** |
+
+With a similar alert volume (about 1.1% of transactions), InsureGuard catches **3.6x more fraud dollars** than a dollar-amount rule while flagging **7x fewer** legitimate customers.
 
 ## Pipeline
 
@@ -13,18 +26,26 @@ generate_data.py  ->  PostgreSQL (star schema)  ->  SQL feature engineering  -> 
 
 ## Step 1: Data and schema
 
-Public fraud datasets either anonymize away the fields fraud analysts actually use (Kaggle's credit card set is PCA components only) or lack a reliable customer key. InsureGuard instead simulates **100,000 transactions across 5,000 customers and 8,470 devices** over six months, with per-customer behavioral baselines (home city, spend level, diurnal pattern, primary device).
+Public fraud datasets either anonymize away the fields fraud analysts actually use (Kaggle's credit card set is PCA components only) or lack a reliable customer key. InsureGuard instead simulates **100,000 transactions across 5,000 customers and 8,446 devices** over six months.
 
-Fraud (**1.2% of rows, $165K**) is injected as incidents with distinct, realistic signatures:
+A first version of the data was *too* easy: a model scored a perfect 1.0 ROC-AUC because legitimate customers never traveled or changed phones. The generator now deliberately includes **innocent anomalies** that make real fraud detection hard:
+
+- multi-day trips to distant cities (legitimate cross-country jumps)
+- new phones activated mid-period (legitimate brand-new devices)
+- bursts of small purchases (coffee, transit, app stores)
+- night-owl customers who routinely shop after midnight
+
+Fraud (**1.2% of rows, $125K**) is injected as incidents with overlapping, imperfect signatures:
 
 | Scenario | Signature | Rows | Avg amount |
 |---|---|---:|---:|
-| Card testing | 5 to 12 micro-charges under $5 within 25 minutes, new device | 660 | $2.70 |
-| Account takeover | 3 to 6 high-value online purchases, new device, distant city | 429 | $262.93 |
-| High-value night | 10 to 25x normal spend between 1 and 4am, customer's own device | 65 | $681.00 |
-| Impossible travel | In-store purchase 1,500+ km from a home purchase minutes earlier | 47 | $131.89 |
+| Card testing | 3 to 10 small charges within 90 minutes, usually a new device | 569 | $7.85 |
+| Account takeover | 2 to 6 high-value online purchases, usually a new device, often a distant city | 360 | $190.07 |
+| Friendly fraud | Customer disputes their own ordinary purchase | 118 | $76.85 |
+| High-value spend | 4 to 20x normal spend on the customer's own device, often at night | 84 | $397.84 |
+| Impossible travel | Purchase far from a home purchase made shortly before | 69 | $136.54 |
 
-Key insight: the median fraudulent transaction ($4.46) is *smaller* than the median legitimate one ($39.72). Amount thresholds alone miss most fraud, which is why the pipeline relies on velocity and behavioral features.
+The median fraudulent transaction ($29.51) is *smaller* than the median legitimate one ($38.34). Amount thresholds alone miss most fraud, which is why the pipeline relies on behavioral features.
 
 ### Schema
 
@@ -47,17 +68,44 @@ DDL is PostgreSQL and Snowflake compatible. A composite index on `(customer_id, 
 | Geographic jump | `km_from_prev_txn`, `minutes_since_prev_txn`, `geo_velocity_kmh`, `km_from_home` | `LAG()` + haversine distance in SQL |
 | Device and context | `device_age_hours`, `hour_of_day`, `day_of_week`, `is_night`, `is_online` | first-seen device timestamp per account |
 
-### Validation: each fraud pattern separates on its target feature
-
 Medians per scenario from [`sql/03_feature_validation.sql`](sql/03_feature_validation.sql):
 
 | Scenario | Spend vs 30d avg | Txns in 1h | Geo velocity (km/h) | Device age (hours) | Night share |
 |---|---:|---:|---:|---:|---:|
-| Legitimate | 0.75x | 1 | 0.1 | 1,824 | 2% |
-| Card testing | 0.14x | **5** | 158.5 | **0.16** | 3% |
-| Account takeover | 1.64x | 2 | 24.6 | **0.36** | 1% |
-| High-value night | **6.38x** | 1 | 0.1 | 993 | **92%** |
-| Impossible travel | 2.43x | 1 | **2,603** | **0.00** | 6% |
+| Legitimate | 0.74x | 1 | 0.1 | 1,751 | 4% |
+| Card testing | 0.32x | **4** | 74.1 | **0.26** | 2% |
+| Account takeover | 1.45x | 2 | 12.0 | **1.00** | 7% |
+| Friendly fraud | 1.30x | 1 | 0.0 | 1,473 | 0% |
+| High-value spend | **3.57x** | 1 | 1.0 | 1,580 | **52%** |
+| Impossible travel | 2.30x | 1 | **994.5** | **0.00** | 6% |
+
+## Step 3: Machine learning risk scoring
+
+[`src/train_model.py`](src/train_model.py) trains two complementary models and blends them into one **Anomaly Risk Score (0 to 100)** per transaction.
+
+| Model | Type | Role |
+|---|---|---|
+| Isolation Forest | Unsupervised (no labels) | Flags anything unusual, including fraud patterns never seen before |
+| XGBoost | Supervised | Learns known fraud patterns from labeled history |
+| **Risk score** | 80% XGBoost + 20% Isolation Forest | Tiers: Low (<30), Medium (30 to 59), High (60 to 79), Critical (80+); High and above are flagged for review |
+
+**Design choices**
+- **Out-of-time validation:** train on January to March, early-stop on April, report on May to June only. A random split would let the model peek at future behavior.
+- **Class imbalance (1.2% fraud):** handled with XGBoost `scale_pos_weight` rather than SMOTE. SMOTE interpolates between fraud rows and invents velocity and location combinations that cannot physically exist; weighting keeps every training row real.
+- **Baseline comparison:** every model is benchmarked against a simple amount rule and at a comparable alert volume.
+
+**Test-period results (33,139 transactions, $42K fraud)**
+
+| Model | ROC-AUC | PR-AUC | Precision | Recall | Fraud $ caught |
+|---|---:|---:|---:|---:|---:|
+| Rule: amount >= $500 | 0.483 | 0.019 | 3.8% | 3.7% | 21.0% |
+| Isolation Forest only | 0.872 | 0.117 | 21.9% | 20.8% | 40.6% |
+| XGBoost only | 0.987 | 0.868 | 64.8% | 84.7% | 81.1% |
+| **InsureGuard blend** | **0.986** | **0.860** | **85.0%** | **80.8%** | **75.5%** |
+
+Recall by scenario: card testing 96%, impossible travel 88%, account takeover 82%, high-value spend 55%, friendly fraud 0%. Friendly fraud is the honest limitation: a customer disputing their own normal purchase leaves no behavioral trace, which is why real issuers handle it through chargeback investigation rather than transaction models.
+
+Scores are written to `insureguard.txn_risk_scores` for the dashboard, and full metrics to [`reports/model_metrics.json`](reports/model_metrics.json).
 
 ## Quick start
 
@@ -67,12 +115,15 @@ cp .env.example .env            # then set your PostgreSQL password
 python src/generate_data.py     # Step 1: writes data/raw/*.csv
 python src/load_to_postgres.py  # Step 1: schema + bulk load
 python src/build_features.py    # Step 2: feature table + validation report
+python src/train_model.py       # Step 3: train, evaluate, write risk scores
 ```
 
 ## Project structure
 
 ```
 InsureGuard/
+├── reports/
+│   └── model_metrics.json         test-period metrics + feature importance
 ├── sql/
 │   ├── 01_schema.sql              star schema DDL
 │   ├── 02_features.sql            window-function feature engineering
@@ -81,9 +132,10 @@ InsureGuard/
     ├── db.py                      shared connection helpers
     ├── generate_data.py           synthetic data generator
     ├── load_to_postgres.py        COPY-based bulk loader
-    └── build_features.py          runs feature SQL + prints validation
+    ├── build_features.py          runs feature SQL + prints validation
+    └── train_model.py             Isolation Forest + XGBoost risk scoring
 ```
 
 ## Tech stack
 
-Python (pandas, NumPy), PostgreSQL 18, SQL window functions, scikit-learn, Power BI
+Python (pandas, NumPy, scikit-learn, XGBoost), PostgreSQL 18, SQL window functions, Power BI
