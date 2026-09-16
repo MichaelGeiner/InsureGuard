@@ -1,0 +1,4 @@
+﻿numpy>=2.0
+pandas>=2.2
+psycopg>=3.2
+python-dotenv>=1.0
