@@ -38,7 +38,8 @@ def main() -> None:
 
     with connect() as conn:
         run_sql_file(conn, "01_schema.sql")
-        conn.execute("DROP TABLE IF EXISTS insureguard.txn_features")  # derived; rebuilt in Step 2
+        # derived tables are rebuilt by later steps (features: Step 2, scores: Step 3)
+        conn.execute("DROP TABLE IF EXISTS insureguard.txn_risk_scores, insureguard.txn_features")
         conn.execute("TRUNCATE insureguard.fact_transaction, insureguard.dim_device, insureguard.dim_customer")
 
         for table, filename in TABLES:

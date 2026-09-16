@@ -6,15 +6,19 @@ Produces three relational CSVs in data/raw/:
   devices.csv       -> insureguard.dim_device
   transactions.csv  -> insureguard.fact_transaction
 
-Legitimate behavior is modeled per customer (home city, spend level, diurnal
-pattern, primary device). Fraud is injected as *incidents* with realistic
-signatures so the Step 2 features (rolling spend, 1h/24h velocity, geo-jump
-speed) actually have signal to find:
+Legitimate behavior is modeled per customer and deliberately includes the
+"innocent anomalies" that make real fraud detection hard:
+  * multi-day trips to distant cities (legit geo jumps after a flight)
+  * new phones activated mid-period (legit brand-new devices)
+  * short bursts of small purchases (coffee, transit, app stores)
+  * night-owl customers who routinely shop after midnight
 
-  account_takeover   burst of 3-6 high-value online txns, new device, distant city
-  card_testing       burst of 5-12 micro-charges (<$5) within ~25 min, new device
-  impossible_travel  in-store txn far from home minutes after a legit home txn
-  high_value_night   1-2 txns at 10-25x normal spend, 1-4am, customer's own device
+Fraud is injected as incidents with overlapping, imperfect signatures:
+  account_takeover   2-6 high-value purchases over a few hours, usually new device, often distant city
+  card_testing       3-10 small charges within ~90 min, usually new device
+  impossible_travel  purchase far from a home purchase made shortly before
+  high_value_spend   4-20x normal spend on the customer's own device, often at night
+  friendly_fraud     customer disputes their own ordinary purchases (by design ~undetectable)
 
 Usage:
   python src/generate_data.py --rows 100000 --fraud-rate 0.012 --seed 42
@@ -83,10 +87,12 @@ CAT_P = CAT_P / CAT_P.sum()
 CAT_MULT = np.array([v[1] for v in CATEGORIES.values()])
 CAT_ONLINE = np.array([v[2] for v in CATEGORIES.values()])
 
-# legitimate activity by hour of day (quiet overnight, peaks at lunch and evening)
+# legitimate activity by hour of day
 HOUR_W = np.array([0.3, 0.2, 0.15, 0.1, 0.1, 0.3, 0.8, 1.5, 2.2, 2.6, 2.9, 3.4,
                    3.8, 3.4, 3.0, 3.0, 3.3, 3.8, 4.0, 3.6, 3.0, 2.2, 1.4, 0.7])
 HOUR_P = HOUR_W / HOUR_W.sum()
+# night owls (shift workers, students): activity shifted about 7 hours later
+HOUR_P_OWL = np.roll(HOUR_P, 7)
 
 
 def haversine_km(lat1, lon1, lat2, lon2):
@@ -105,16 +111,25 @@ class Generator:
         self.n_customers = n_customers
         self.fraud_rate = fraud_rate
         self.fraud_device_seq = 0
+        self.extra_devices: list[dict] = []
 
     # ---------- dimensions ----------
     def build_customers(self) -> pd.DataFrame:
         rng, n = self.rng, self.n_customers
         self.home_idx = rng.choice(len(CITIES), n, p=CITY_P)
         segment = rng.choice(["standard", "premium", "business"], n, p=[0.75, 0.20, 0.05])
+
         # hidden behavioral traits (not written to the database)
         self.activity = rng.lognormal(0.0, 0.7, n)
         self.spend_mu = rng.normal(3.3, 0.45, n) + np.select(
             [segment == "premium", segment == "business"], [0.4, 0.8], 0.0)
+        self.night_owl = rng.random(n) < 0.06
+
+        # one multi-day trip to a distant city for about a third of customers
+        self.has_trip = rng.random(n) < 0.35
+        self.trip_start = rng.integers(0, DAYS - 8, n)
+        self.trip_end = self.trip_start + rng.integers(2, 8, n)
+        self.trip_city = np.array([self.far_city(h) for h in self.home_idx])
 
         signup = START - pd.to_timedelta(rng.integers(30, 365 * 8, n), unit="D")
         return pd.DataFrame({
@@ -132,14 +147,24 @@ class Generator:
         rng = self.rng
         self.n_dev = rng.choice([1, 2, 3], self.n_customers, p=[0.5, 0.35, 0.15])
         self.dev_offset = np.concatenate([[0], np.cumsum(self.n_dev)[:-1]])
-        cust = np.repeat(customers["customer_id"].values, self.n_dev)
-        signup = np.repeat(pd.to_datetime(customers["signup_date"]).values, self.n_dev)
         total = int(self.n_dev.sum())
+
+        # about half of multi-device customers get their newest device (new phone) mid-period
+        last_dev = self.dev_offset + self.n_dev - 1
+        upgrades = last_dev[(self.n_dev > 1) & (rng.random(self.n_customers) < 0.5)]
+        self.dev_active_day = np.zeros(total, dtype=int)
+        self.dev_active_day[upgrades] = rng.integers(10, DAYS - 10, len(upgrades))
+
+        signup = pd.to_datetime(np.repeat(pd.to_datetime(customers["signup_date"]).values, self.n_dev))
+        first_seen = signup + pd.to_timedelta(rng.integers(0, 86400 * 30, total), unit="s")
+        activated = START + pd.to_timedelta(self.dev_active_day, unit="D") + pd.to_timedelta(rng.integers(0, 36000, total), unit="s")
+        first_seen = pd.Series(first_seen).where(self.dev_active_day == 0, pd.Series(activated))
+
         self.devices = pd.DataFrame({
             "device_id": [f"D{i:07d}" for i in range(1, total + 1)],
-            "customer_id": cust,
+            "customer_id": np.repeat(customers["customer_id"].values, self.n_dev),
             "device_type": rng.choice(["mobile_ios", "mobile_android", "desktop_web"], total, p=[0.45, 0.35, 0.20]),
-            "first_seen_at": pd.to_datetime(signup) + pd.to_timedelta(rng.integers(0, 86400 * 30, total), unit="s"),
+            "first_seen_at": first_seen,
             "is_trusted": True,
         })
         return self.devices
@@ -150,21 +175,23 @@ class Generator:
         device_id = f"X{self.fraud_device_seq:07d}"
         self.extra_devices.append({
             "device_id": device_id, "customer_id": customer_id,
-            "device_type": self.rng.choice(["desktop_web", "mobile_android"]),
+            "device_type": self.rng.choice(["desktop_web", "mobile_android", "mobile_ios"]),
             "first_seen_at": seen_at, "is_trusted": False,
         })
         return device_id
 
-    # ---------- transactions ----------
+    # ---------- helpers ----------
     def random_time(self, night: bool = False) -> pd.Timestamp:
         rng = self.rng
-        hour = rng.integers(1, 5) if night else rng.choice(24, p=HOUR_P)
+        hour = rng.integers(0, 5) if night else rng.choice(24, p=HOUR_P)
         return START + pd.Timedelta(days=int(rng.integers(0, DAYS - 1)), hours=int(hour),
                                     seconds=int(rng.integers(0, 3600)))
 
     def far_city(self, home: int, min_km: float = 800) -> int:
-        candidates = np.flatnonzero(CITY_DIST[home] >= min_km)
-        return int(self.rng.choice(candidates))
+        return int(self.rng.choice(np.flatnonzero(CITY_DIST[home] >= min_km)))
+
+    def primary_device(self, c: int) -> str:
+        return self.devices["device_id"].values[self.dev_offset[c]]
 
     def row(self, c, device, ts, amount, category, channel, city, fraud, scenario):
         jitter = self.rng.normal(0, 0.04, 2)
@@ -177,66 +204,87 @@ class Generator:
             "is_fraud": fraud, "fraud_scenario": scenario,
         }
 
-    def primary_device(self, c: int) -> str:
-        return self.devices["device_id"].values[self.dev_offset[c]]
-
+    # ---------- fraud ----------
     def build_fraud(self) -> list[dict]:
         rng, rows = self.rng, []
         target = int(self.n_rows * self.fraud_rate)
-        scenarios = ["account_takeover", "card_testing", "impossible_travel", "high_value_night"]
+        scenarios = ["account_takeover", "card_testing", "impossible_travel", "high_value_spend", "friendly_fraud"]
         while sum(r["is_fraud"] for r in rows) < target:
             c = int(rng.integers(self.n_customers))
-            home = int(self.home_idx[c])
-            cid = f"C{c + 1:06d}"
-            scenario = rng.choice(scenarios, p=[0.35, 0.25, 0.20, 0.20])
+            home, cid = int(self.home_idx[c]), f"C{c + 1:06d}"
+            scenario = rng.choice(scenarios, p=[0.26, 0.20, 0.14, 0.15, 0.25])
+            t0 = self.random_time(night=(scenario == "high_value_spend" and rng.random() < 0.6))
 
             if scenario == "account_takeover":
-                t0 = self.random_time()
-                dev, city = self.new_fraud_device(cid, t0), self.far_city(home)
-                for m in np.sort(rng.uniform(0, 90, rng.integers(3, 7))):
-                    cat = rng.choice(["electronics", "gift_cards", "retail"], p=[0.5, 0.3, 0.2])
-                    rows.append(self.row(c, dev, t0 + pd.Timedelta(minutes=float(m)),
-                                         rng.lognormal(5.4, 0.6), cat, "online", city, True, scenario))
+                dev = self.new_fraud_device(cid, t0) if rng.random() < 0.85 else self.primary_device(c)
+                city = self.far_city(home) if rng.random() < 0.55 else home  # proxies/local fraud rings
+                for m in np.sort(rng.uniform(0, 180, rng.integers(2, 7))):
+                    rows.append(self.row(c, dev, t0 + pd.Timedelta(minutes=float(m)), rng.lognormal(5.0, 0.8),
+                                         rng.choice(["electronics", "gift_cards", "retail", "travel"]),
+                                         "online", city, True, scenario))
             elif scenario == "card_testing":
-                t0 = self.random_time()
-                dev, city = self.new_fraud_device(cid, t0), int(rng.choice(len(CITIES)))
-                for m in np.sort(rng.uniform(0, 25, rng.integers(5, 13))):
-                    rows.append(self.row(c, dev, t0 + pd.Timedelta(minutes=float(m)),
-                                         rng.uniform(0.5, 4.99), rng.choice(["entertainment", "retail", "gift_cards"]),
+                dev = self.new_fraud_device(cid, t0) if rng.random() < 0.9 else self.primary_device(c)
+                city = home if rng.random() < 0.5 else int(rng.choice(len(CITIES), p=CITY_P))
+                span = rng.uniform(10, 90)
+                for m in np.sort(rng.uniform(0, span, rng.integers(3, 11))):
+                    rows.append(self.row(c, dev, t0 + pd.Timedelta(minutes=float(m)), rng.uniform(0.5, 15),
+                                         rng.choice(["entertainment", "retail", "gift_cards", "restaurants"]),
                                          "online", city, True, scenario))
             elif scenario == "impossible_travel":
-                t0 = self.random_time()
                 rows.append(self.row(c, self.primary_device(c), t0, rng.lognormal(self.spend_mu[c], 0.5),
                                      "grocery", "in_store", home, False, None))
-                dev = self.new_fraud_device(cid, t0)
-                rows.append(self.row(c, dev, t0 + pd.Timedelta(minutes=float(rng.uniform(20, 120))),
-                                     rng.lognormal(4.9, 0.6), rng.choice(["electronics", "retail"]),
-                                     "in_store", self.far_city(home, 1500), True, scenario))
-            else:  # high_value_night: compromised session on the customer's own device
-                t0 = self.random_time(night=True)
-                for m in np.sort(rng.uniform(0, 40, rng.integers(1, 3))):
+                dev = self.new_fraud_device(cid, t0) if rng.random() < 0.7 else self.primary_device(c)
+                rows.append(self.row(c, dev, t0 + pd.Timedelta(minutes=float(rng.uniform(30, 240))),
+                                     rng.lognormal(4.7, 0.7), rng.choice(["electronics", "retail", "restaurants"]),
+                                     "in_store", self.far_city(home), True, scenario))
+            elif scenario == "high_value_spend":  # compromised session on the customer's own device
+                for m in np.sort(rng.uniform(0, 60, rng.integers(1, 3))):
                     rows.append(self.row(c, self.primary_device(c), t0 + pd.Timedelta(minutes=float(m)),
-                                         np.exp(self.spend_mu[c]) * rng.uniform(10, 25),
-                                         rng.choice(["electronics", "travel"]), "online", home, True, scenario))
+                                         np.exp(self.spend_mu[c]) * rng.uniform(4, 20),
+                                         rng.choice(["electronics", "travel", "retail"]), "online", home, True, scenario))
+            else:  # friendly_fraud: customer later disputes an ordinary purchase
+                for _ in range(rng.integers(1, 3)):
+                    rows.append(self.row(c, self.primary_device(c), self.random_time(),
+                                         rng.lognormal(self.spend_mu[c] + np.log(2.0), 0.6),
+                                         rng.choice(["retail", "electronics", "travel", "entertainment"]),
+                                         rng.choice(["online", "in_store"]), home, True, scenario))
         return rows
+
+    # ---------- legitimate ----------
+    def build_legit_bursts(self, n_rows: int) -> list[dict]:
+        """Innocent velocity: a coffee run, transit taps, several app-store buys in one sitting."""
+        rng, rows = self.rng, []
+        while len(rows) < n_rows:
+            c = int(rng.choice(self.n_customers, p=self.activity / self.activity.sum()))
+            t0 = self.random_time()
+            channel = rng.choice(["online", "in_store"])
+            for m in np.sort(rng.uniform(0, 45, rng.integers(3, 9))):
+                rows.append(self.row(c, self.primary_device(c), t0 + pd.Timedelta(minutes=float(m)),
+                                     rng.lognormal(2.3, 0.6), rng.choice(["restaurants", "entertainment", "retail"]),
+                                     channel, int(self.home_idx[c]), False, None))
+        return rows[:n_rows]
 
     def build_legit(self, n: int) -> pd.DataFrame:
         rng = self.rng
         c = rng.choice(self.n_customers, n, p=self.activity / self.activity.sum())
         cat = rng.choice(len(CAT_NAME), n, p=CAT_P)
 
-        ts = (START + pd.to_timedelta(rng.integers(0, DAYS, n), unit="D")
-              + pd.to_timedelta(rng.choice(24, n, p=HOUR_P), unit="h")
+        day = rng.integers(0, DAYS, n)
+        hour = np.where(self.night_owl[c], rng.choice(24, n, p=HOUR_P_OWL), rng.choice(24, n, p=HOUR_P))
+        ts = (START + pd.to_timedelta(day, unit="D") + pd.to_timedelta(hour, unit="h")
               + pd.to_timedelta(rng.integers(0, 3600, n), unit="s"))
 
-        # 94% of spend happens in the home city, the rest is ordinary travel
-        traveling = rng.random(n) < 0.06
-        city = np.where(traveling, rng.choice(len(CITIES), n, p=CITY_P), self.home_idx[c])
+        on_trip = self.has_trip[c] & (day >= self.trip_start[c]) & (day < self.trip_end[c])
+        wandering = rng.random(n) < 0.03  # one-off purchases elsewhere (online merchants, day trips)
+        city = np.where(on_trip, self.trip_city[c],
+                        np.where(wandering, rng.choice(len(CITIES), n, p=CITY_P), self.home_idx[c]))
 
         n_dev = self.n_dev[c]
         other = 1 + np.floor(rng.random(n) * np.maximum(n_dev - 1, 1)).astype(int)
-        dev_idx = np.where((n_dev == 1) | (rng.random(n) < 0.7), 0, other)
-        device = self.devices["device_id"].values[self.dev_offset[c] + dev_idx]
+        dev_pos = self.dev_offset[c] + np.where((n_dev == 1) | (rng.random(n) < 0.6), 0, other)
+        # a device can only be used once it has been activated; fall back to the primary device
+        dev_pos = np.where(day >= self.dev_active_day[dev_pos], dev_pos, self.dev_offset[c])
+        device = self.devices["device_id"].values[dev_pos]
 
         amount = rng.lognormal(self.spend_mu[c] + np.log(CAT_MULT[cat]), 0.7)
         return pd.DataFrame({
@@ -257,14 +305,14 @@ class Generator:
     def run(self):
         customers = self.build_customers()
         devices = self.build_devices(customers)
-        self.extra_devices = []
 
         fraud = pd.DataFrame(self.build_fraud())
-        legit = self.build_legit(self.n_rows - len(fraud))
-        txns = (pd.concat([legit, fraud], ignore_index=True)
+        bursts = pd.DataFrame(self.build_legit_bursts(int(self.n_rows * 0.03)))
+        legit = self.build_legit(self.n_rows - len(fraud) - len(bursts))
+        txns = (pd.concat([legit, bursts, fraud], ignore_index=True)
                 .sort_values(["txn_timestamp", "customer_id"], kind="stable")
                 .reset_index(drop=True))
-        txns["txn_timestamp"] = txns["txn_timestamp"].dt.floor("s")
+        txns["txn_timestamp"] = pd.to_datetime(txns["txn_timestamp"]).dt.floor("s")
         txns.insert(0, "transaction_id", [f"TXN{i:08d}" for i in range(1, len(txns) + 1)])
 
         devices = pd.concat([devices, pd.DataFrame(self.extra_devices)], ignore_index=True)
@@ -295,7 +343,7 @@ def main():
     print(f"total volume: ${txns['amount'].sum():>14,.2f}")
     print(f"fraud volume: ${fraud['amount'].sum():>14,.2f}")
     print("\nfraud rows by scenario:")
-    print(fraud["fraud_scenario"].value_counts().to_string())
+    print(fraud.groupby("fraud_scenario")["amount"].agg(rows="size", avg_amount="mean", total="sum").round(2).to_string())
 
 
 if __name__ == "__main__":
