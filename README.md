@@ -4,6 +4,8 @@
 
 > Status: Step 4 of 5 complete (data, SQL features, ML risk scoring, Power BI dashboard). Built in public, step by step.
 
+**[Open the live interactive dashboard](https://michaelgeiner.github.io/InsureGuard/)** (no install, works on mobile)
+
 ![InsureGuard executive dashboard](docs/executive-overview.png)
 
 ## Results at a glance
@@ -127,6 +129,10 @@ Executive pages are filtered to the out-of-sample live period so the headline nu
 
 The fraud-rate-by-score chart is the clearest proof the score is meaningful: **0.03%** of transactions scoring 0 to 9 are fraud, versus **96%+** of those scoring 80 or higher.
 
+### Web version
+
+[`docs/index.html`](docs/index.html) is a dependency-free interactive version of the same three pages, hosted on GitHub Pages. [`src/export_web_data.py`](src/export_web_data.py) exports the 33,139 live-period transactions as a 1 MB dictionary-encoded JSON file, and every chart re-aggregates in the browser when filters change (results verified against PostgreSQL). Includes a sortable alert queue, hover tooltips, table views for each chart, dark mode, mobile layout, and a colorblind-validated palette.
+
 ## Quick start
 
 ```bash
@@ -137,6 +143,7 @@ python src/load_to_postgres.py  # Step 1: schema + bulk load
 python src/build_features.py    # Step 2: feature table + validation report
 python src/train_model.py       # Step 3: train, evaluate, write risk scores
 python src/build_bi.py          # Step 4: reporting views for Power BI
+python src/export_web_data.py   # Step 4: data file for the web dashboard
 ```
 
 Then open `dashboard/InsureGuard.pbip` in Power BI Desktop and refresh.

@@ -1,0 +1,892 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>InsureGuard Fraud Dashboard</title>
+<meta name="description" content="Interactive fraud risk dashboard: PostgreSQL feature engineering, Isolation Forest + XGBoost risk scoring, evaluated out of sample.">
+<meta property="og:title" content="InsureGuard: fraud risk dashboard">
+<meta property="og:description" content="Machine learning fraud detection pipeline catching 75.5% of fraud dollars at 85% alert precision on unseen data.">
+<meta property="og:image" content="https://michaelgeiner.github.io/InsureGuard/executive-overview.png">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --border-strong: rgba(11, 11, 11, 0.18);
+    --hover: rgba(11, 11, 11, 0.04);
+    --s1: #2a78d6;          /* categorical slot 1: prevented, single series */
+    --s2: #eb6834;          /* categorical slot 2: missed, fraud */
+    --legit: #c3c2b7;       /* de-emphasized: legitimate */
+    --critical: #d03b3b;    /* status */
+    --serious: #ec835a;
+    --warning: #fab219;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --border: rgba(255, 255, 255, 0.10);
+      --border-strong: rgba(255, 255, 255, 0.20);
+      --hover: rgba(255, 255, 255, 0.05);
+      --s1: #3987e5;
+      --s2: #d95926;
+      --legit: #52514e;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --border-strong: rgba(255, 255, 255, 0.20);
+    --hover: rgba(255, 255, 255, 0.05);
+    --s1: #3987e5;
+    --s2: #d95926;
+    --legit: #52514e;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--page);
+    color: var(--ink);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 28px 24px 56px; }
+  @media (max-width: 640px) { .wrap { padding: 18px 16px 40px; } }
+
+  .brand-row { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+  .eyebrow { margin: 0; font-size: 12px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--s1); }
+  h1 { font-size: 30px; line-height: 1.15; margin: 4px 0 6px; font-weight: 650; letter-spacing: -0.015em; }
+  .sub { margin: 0; color: var(--ink-2); max-width: 760px; }
+  .actions { display: flex; gap: 8px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px;
+    border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface);
+    color: var(--ink); font: inherit; font-weight: 550; text-decoration: none; cursor: pointer; white-space: nowrap;
+  }
+  .btn:hover { background: var(--hover); }
+  .btn.icon { width: 36px; justify-content: center; padding: 0; }
+
+  .tabs { display: flex; gap: 2px; margin-top: 22px; border-bottom: 1px solid var(--grid); overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button {
+    appearance: none; background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px;
+    padding: 10px 14px; font: inherit; font-weight: 550; color: var(--ink-2); cursor: pointer; white-space: nowrap;
+  }
+  .tabs button:hover { color: var(--ink); }
+  .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin: 20px 0 16px; }
+  .filters label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink-2); flex: 1 1 150px; max-width: 220px; }
+  select {
+    font: inherit; height: 36px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 8px;
+    background: var(--surface); color: var(--ink);
+  }
+  .filters .btn { height: 36px; }
+  .filter-note { font-size: 12px; color: var(--muted); margin: 20px 0 16px; }
+
+  .kpis { display: grid; grid-template-columns: repeat(var(--kpi-cols, 6), minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+  #kpi-alerts { --kpi-cols: 4; }
+  @media (max-width: 1080px) { .kpis { --kpi-cols: 3; } #kpi-alerts { --kpi-cols: 2; } }
+  @media (max-width: 560px) { .kpis, #kpi-alerts { --kpi-cols: 2; } .k-value { font-size: 22px; } }
+  .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .k-label { font-size: 12.5px; color: var(--ink-2); }
+  .k-value { font-size: 28px; font-weight: 600; margin-top: 2px; letter-spacing: -0.01em; }
+  .k-note { font-size: 12px; color: var(--muted); }
+
+  .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; }
+  .span-12 { grid-column: span 12; } .span-7 { grid-column: span 7; } .span-5 { grid-column: span 5; }
+  .span-6 { grid-column: span 6; } .span-8 { grid-column: span 8; } .span-4 { grid-column: span 4; }
+  @media (max-width: 900px) { .grid > * { grid-column: span 12; } }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; min-width: 0; }
+  .card h2 { font-size: 15px; font-weight: 600; margin: 0; }
+  .card-sub { font-size: 12.5px; color: var(--ink-2); margin: 2px 0 12px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--ink-2); margin-bottom: 6px; }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+  .sw.dot { border-radius: 50%; }
+  .chart { width: 100%; }
+  .empty { color: var(--muted); font-size: 13px; padding: 40px 0; text-align: center; }
+
+  svg { display: block; overflow: visible; }
+  svg text { font-family: inherit; }
+  .tick { font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+  .lbl { font-size: 12px; fill: var(--ink-2); }
+  .val { font-size: 11.5px; fill: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .axis-title { font-size: 11.5px; fill: var(--ink-2); }
+  .hit { fill: transparent; outline: none; }
+  .hit:hover, .hit:focus-visible { fill: var(--hover); }
+
+  details.tv { margin-top: 10px; }
+  details.tv summary { font-size: 12px; color: var(--ink-2); cursor: pointer; width: fit-content; }
+  details.tv[open] summary { margin-bottom: 8px; }
+
+  .tbl-wrap { overflow-x: auto; }
+  .tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .tbl th {
+    text-align: left; font-weight: 600; color: var(--ink-2); padding: 7px 10px; white-space: nowrap;
+    border-bottom: 1px solid var(--axis);
+  }
+  .tbl td { padding: 7px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  .tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .tbl tr.em td { font-weight: 650; }
+  .tbl th button { all: unset; cursor: pointer; }
+  .tbl th button:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; border-radius: 2px; }
+  .tbl th[aria-sort] button::after { content: " ↓"; }
+  .tbl th[aria-sort="ascending"] button::after { content: " ↑"; }
+  .tbl td.hot { font-weight: 650; color: var(--ink); }
+  .tbl td.soft { color: var(--ink-2); }
+  .heat td.cell { text-align: right; font-variant-numeric: tabular-nums; font-weight: 550; border-bottom: 2px solid var(--surface); border-left: 2px solid var(--surface); }
+
+  .tier { display: inline-flex; align-items: center; gap: 6px; }
+  .tier i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .chip {
+    border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink-2); border-radius: 999px;
+    padding: 5px 12px; font: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  .chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+  .more { margin-top: 12px; }
+
+  .confusion { display: grid; grid-template-columns: auto 1fr 1fr; gap: 8px; font-size: 12.5px; }
+  .confusion .h { color: var(--ink-2); font-weight: 600; align-self: end; padding: 0 4px 2px; }
+  .confusion .rh { color: var(--ink-2); font-weight: 600; align-self: center; padding-right: 6px; }
+  .confusion .cell { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .confusion .n { font-size: 24px; font-weight: 600; letter-spacing: -0.01em; }
+  .confusion .d { color: var(--ink-2); }
+
+  .notes { margin: 0; padding-left: 18px; color: var(--ink-2); }
+  .notes li { margin: 4px 0; }
+  footer { margin-top: 28px; color: var(--muted); font-size: 12.5px; }
+
+  #tip {
+    position: fixed; z-index: 20; pointer-events: none; min-width: 150px; max-width: 280px;
+    background: var(--surface); color: var(--ink); border: 1px solid var(--border-strong); border-radius: 8px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16); padding: 8px 10px; font-size: 12px;
+  }
+  #tip .t-title { font-weight: 600; margin-bottom: 4px; }
+  #tip .t-row { display: flex; justify-content: space-between; gap: 14px; }
+  #tip .t-row span:last-child { font-variant-numeric: tabular-nums; font-weight: 550; }
+
+  [hidden] { display: none !important; }
+  .loading { padding: 80px 0; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand-row">
+      <div>
+        <p class="eyebrow">InsureGuard</p>
+        <h1>Fraud risk dashboard</h1>
+        <p class="sub">Machine learning fraud scoring evaluated on transactions the model never saw: May to June 2026,
+          <span id="rowcount">33,139</span> transactions. Data is synthetic and generated to mimic real fraud patterns.</p>
+      </div>
+      <div class="actions">
+        <a class="btn" href="https://github.com/MichaelGeiner/InsureGuard">View code on GitHub</a>
+        <button class="btn icon" id="theme" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">◐</button>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Dashboard pages">
+      <button role="tab" id="tab-btn-overview" data-tab="overview" aria-selected="true" aria-controls="tab-overview">Executive overview</button>
+      <button role="tab" id="tab-btn-alerts" data-tab="alerts" aria-selected="false" aria-controls="tab-alerts">Alert investigation</button>
+      <button role="tab" id="tab-btn-model" data-tab="model" aria-selected="false" aria-controls="tab-model">Model performance</button>
+    </nav>
+  </header>
+
+  <main>
+    <section class="filters" id="filters" aria-label="Filters">
+      <label>Channel <select data-dim="channel"></select></label>
+      <label>Customer segment <select data-dim="customer_segment"></select></label>
+      <label>Merchant category <select data-dim="merchant_category"></select></label>
+      <label>State <select data-dim="state"></select></label>
+      <button class="btn" id="reset" type="button">Reset filters</button>
+    </section>
+    <p class="filter-note" id="model-note" hidden>Scorecard metrics are fixed results on the May to June test set, so page filters do not apply here.</p>
+
+    <div class="loading" id="loading">Loading 33,139 transactions…</div>
+
+    <!-- ============================== Executive overview -->
+    <section id="tab-overview" role="tabpanel" aria-labelledby="tab-btn-overview" hidden>
+      <div class="kpis" id="kpi-overview"></div>
+      <div class="grid">
+        <article class="card span-7" id="card-weekly">
+          <h2>Weekly fraud dollars: prevented vs missed</h2>
+          <p class="card-sub">Fraud dollars on transactions the model flagged (score 60+) vs let through</p>
+          <div class="legend"></div><div class="chart"></div>
+          <details class="tv"><summary>View as table</summary><div class="tbl-wrap"></div></details>
+        </article>
+        <article class="card span-5" id="card-attack">
+          <h2>Fraud exposure by attack type</h2>
+          <p class="card-sub">Where the model is strong, and where fraud slips through</p>
+          <div class="legend"></div><div class="chart"></div>
+          <details class="tv"><summary>View as table</summary><div class="tbl-wrap"></div></details>
+        </article>
+        <article class="card span-7" id="card-state">
+          <h2>Fraud exposure by state</h2>
+          <p class="card-sub">Top 10 states by fraud dollars</p>
+          <div class="chart"></div>
+          <details class="tv"><summary>View as table</summary><div class="tbl-wrap"></div></details>
+        </article>
+        <article class="card span-5" id="card-tier">
+          <h2>Transactions by risk tier</h2>
+          <p class="card-sub">High and Critical (score 60+) go to analysts; Medium is a watchlist</p>
+          <div class="chart"></div>
+          <details class="tv"><summary>View as table</summary><div class="tbl-wrap"></div></details>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============================== Alert investigation -->
+    <section id="tab-alerts" role="tabpanel" aria-labelledby="tab-btn-alerts" hidden>
+      <div class="kpis" id="kpi-alerts"></div>
+      <div class="grid">
+        <article class="card span-8" id="card-scatter">
+          <h2>Risk score vs amount</h2>
+          <p class="card-sub">Every transaction scoring 30+. Fraud clusters above the flag line regardless of amount, so the model is not just flagging big purchases.</p>
+          <div class="legend"></div><div class="chart"></div>
+        </article>
+        <article class="card span-4" id="card-hour">
+          <h2>When alerts fire</h2>
+          <p class="card-sub">Flagged alerts by hour of day</p>
+          <div class="chart"></div>
+          <details class="tv"><summary>View as table</summary><div class="tbl-wrap"></div></details>
+        </article>
+        <article class="card span-12" id="card-queue">
+          <h2>Alert queue</h2>
+          <p class="card-sub">Sorted by risk score. Bold risk drivers are the unusual signals behind each flag: 3+ transactions in an hour, 3x+ normal spend, 900+ km/h travel speed, or a device under 2 hours old.</p>
+          <div class="chips" role="group" aria-label="Risk tier"></div>
+          <div class="tbl-wrap"></div>
+          <button class="btn more" type="button">Show 25 more</button>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============================== Model performance -->
+    <section id="tab-model" role="tabpanel" aria-labelledby="tab-btn-model" hidden>
+      <div class="grid">
+        <article class="card span-12" id="card-scorecard">
+          <h2>Scorecard: InsureGuard vs a simple rule</h2>
+          <p class="card-sub">Test period May to June 2026 · trained January to March, early-stopped on April</p>
+          <div class="tbl-wrap"></div>
+        </article>
+        <article class="card span-6" id="card-compare">
+          <h2>Fraud dollars caught and alert precision</h2>
+          <p class="card-sub">Higher is better on both</p>
+          <div class="legend"></div><div class="chart"></div>
+        </article>
+        <article class="card span-6" id="card-scenarios">
+          <h2>Catch rate by attack type</h2>
+          <p class="card-sub">Share of fraud transactions flagged, per model</p>
+          <div class="tbl-wrap"></div>
+        </article>
+        <article class="card span-6" id="card-band">
+          <h2>Higher score, more fraud</h2>
+          <p class="card-sub">Share of transactions that are fraud, by risk score band</p>
+          <div class="chart"></div>
+          <details class="tv"><summary>View as table</summary><div class="tbl-wrap"></div></details>
+        </article>
+        <article class="card span-6" id="card-confusion">
+          <h2>Confusion matrix</h2>
+          <p class="card-sub">InsureGuard blend at the 60+ flag threshold, May to June</p>
+          <div class="confusion"></div>
+        </article>
+        <article class="card span-12">
+          <h2>How the model was built</h2>
+          <ul class="notes">
+            <li><strong>Features in SQL:</strong> PostgreSQL window functions compute 7/30-day spend baselines, 1h/24h velocity, haversine travel speed and device age, using only each customer's past.</li>
+            <li><strong>Two models, one score:</strong> Isolation Forest (unsupervised) catches anything unusual; XGBoost (supervised) learns known fraud. Blended 20/80 into a 0 to 100 risk score.</li>
+            <li><strong>Honest evaluation:</strong> out-of-time split, so the model is graded only on months it never saw. A first version scored a suspicious perfect 1.0 ROC-AUC, which exposed overly clean synthetic data; the generator was rebuilt with realistic noise.</li>
+            <li><strong>Class imbalance:</strong> 1.2% fraud handled with class weighting rather than SMOTE, so no synthetic training rows with impossible combinations.</li>
+            <li><strong>Known limitation:</strong> friendly fraud (customers disputing their own purchases) leaves no behavioral trace and is caught 0% of the time; that belongs to chargeback investigation, not transaction scoring.</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Built by Michael Geiner · Python, PostgreSQL, scikit-learn, XGBoost, Power BI ·
+    <a href="https://github.com/MichaelGeiner/InsureGuard">source on GitHub</a>
+  </footer>
+</div>
+<div id="tip" role="tooltip" hidden></div>
+
+<script>
+(() => {
+  "use strict";
+  const NS = "http://www.w3.org/2000/svg";
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+  const usd0 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+  const usd2 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const int = new Intl.NumberFormat("en-US");
+  const pct = (v, d = 1) => (Number.isFinite(v) ? (v * 100).toFixed(d) + "%" : "n/a");
+  const kUSD = (v) => (v >= 1000 ? "$" + (v / 1000).toFixed(v % 1000 === 0 || v >= 10000 ? 0 : 1) + "K" : "$" + Math.round(v));
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const title = (s) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+  const RAMP = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"];
+  const TIER_COLOR = { Critical: "--critical", High: "--serious", Medium: "--warning" };
+  const MODEL_NAMES = {
+    "rule: amount >= $500": "Rule: amount ≥ $500",
+    isolation_forest: "Isolation Forest only",
+    xgboost: "XGBoost only",
+    insureguard_blend: "InsureGuard blend",
+  };
+
+  let D;
+  const S = { tab: "overview", filters: {}, tier: "flagged", sort: { key: "score", dir: -1 }, shown: 25 };
+
+  // ------------------------------------------------------------------ tooltip
+  const tip = $("#tip");
+  function tipHTML(head, rows) {
+    return `<div class="t-title">${esc(head)}</div>` + rows.map(([color, label, value]) =>
+      `<div class="t-row"><span>${color ? `<i class="sw" style="background:var(${color})"></i>` : ""}${esc(label)}</span><span>${esc(value)}</span></div>`).join("");
+  }
+  function placeTip(x, y) {
+    const r = tip.getBoundingClientRect();
+    let left = x + 14, top = y + 14;
+    if (left + r.width > innerWidth - 8) left = x - r.width - 14;
+    if (top + r.height > innerHeight - 8) top = y - r.height - 14;
+    tip.style.left = Math.max(8, left) + "px";
+    tip.style.top = Math.max(8, top) + "px";
+  }
+  function showTip(html, x, y) { tip.innerHTML = html; tip.hidden = false; placeTip(x, y); }
+  function hideTip() { tip.hidden = true; }
+  function hover(node, html) {
+    node.setAttribute("tabindex", "0");
+    node.addEventListener("pointerenter", (e) => showTip(html(), e.clientX, e.clientY));
+    node.addEventListener("pointermove", (e) => placeTip(e.clientX, e.clientY));
+    node.addEventListener("pointerleave", hideTip);
+    node.addEventListener("focus", () => { const b = node.getBoundingClientRect(); showTip(html(), b.left + b.width / 2, b.top); });
+    node.addEventListener("blur", hideTip);
+  }
+
+  // ------------------------------------------------------------------ svg helpers
+  function svgIn(box, w, h, label) {
+    box.innerHTML = "";
+    const s = document.createElementNS(NS, "svg");
+    s.setAttribute("width", w); s.setAttribute("height", h); s.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    s.setAttribute("role", "img"); s.setAttribute("aria-label", label);
+    box.appendChild(s);
+    return s;
+  }
+  function node(parent, tag, attrs) {
+    const n = document.createElementNS(NS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    parent.appendChild(n);
+    return n;
+  }
+  function line(s, x1, y1, x2, y2, color) {
+    const l = node(s, "line", { x1, y1, x2, y2, "stroke-width": 1, "shape-rendering": "crispEdges" });
+    l.style.stroke = `var(${color})`;
+    return l;
+  }
+  function text(s, x, y, value, cls, anchor = "start") {
+    const t = node(s, "text", { x, y, "text-anchor": anchor, class: cls });
+    t.textContent = value;
+    return t;
+  }
+  function barPath(x, y, w, h, r, end) {
+    if (w <= 0 || h <= 0) return "";
+    r = Math.min(r, end === "right" ? Math.min(w, h / 2) : Math.min(h, w / 2));
+    if (r <= 0) return `M${x},${y}h${w}v${h}h${-w}Z`;
+    if (end === "right")
+      return `M${x},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h - r}Q${x + w},${y + h} ${x + w - r},${y + h}H${x}Z`;
+    return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
+  }
+  function fillPath(s, d, color) {
+    const p = node(s, "path", { d });
+    p.style.fill = `var(${color})`;
+    return p;
+  }
+  function niceMax(v) {
+    if (!(v > 0)) return 1;
+    const e = 10 ** Math.floor(Math.log10(v)), f = v / e;
+    return [1, 1.2, 1.6, 2, 2.4, 3, 4, 5, 6, 8, 10].find((n) => f <= n) * e;
+  }
+  function ticks(max, n) {  // prefer a count whose step is a round number (1, 2, 2.5, 5 x 10^k)
+    const round = (step) => [1, 2, 2.5, 5, 10].some((m) => Math.abs(step / 10 ** Math.floor(Math.log10(step)) - m) < 1e-9);
+    const count = [n, n + 1, n - 1, n + 2, n - 2, 3, 2].find((k) => k >= 2 && round(max / k)) || n;
+    return Array.from({ length: count + 1 }, (_, i) => (max / count) * i);
+  }
+  const sum = (a) => a.reduce((x, y) => x + y, 0);
+
+  function legend(card, items) {
+    $(".legend", card).innerHTML = items.map((i) =>
+      `<span><i class="sw ${i.dot ? "dot" : ""}" style="background:var(${i.color})"></i>${esc(i.name)}</span>`).join("");
+  }
+  function table(container, headers, rows, opts = {}) {
+    const numCols = opts.num || [];
+    container.innerHTML = `<table class="tbl ${opts.cls || ""}"><thead><tr>${headers.map((h, i) =>
+      `<th class="${numCols.includes(i) ? "num" : ""}">${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.map((r) =>
+      `<tr class="${r.em ? "em" : ""}">${r.cells.map((c, i) => `<td class="${numCols.includes(i) ? "num" : ""}">${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+  }
+  function emptyState(box, msg = "No transactions match these filters") {
+    box.innerHTML = `<div class="empty">${esc(msg)}</div>`;
+  }
+
+  // ------------------------------------------------------------------ chart forms
+  function hbars(card, { rows, series, fmt, axisFmt, labelW = 130, rowH = 36, label }) {
+    const box = $(".chart", card);
+    if (!rows.length) return emptyState(box);
+    const W = Math.max(box.clientWidth, 260), lw = Math.min(labelW, W * 0.36);
+    const H = rows.length * rowH + 24, x0 = lw, x1 = W - 64;
+    const s = svgIn(box, W, H, label);
+    const max = niceMax(Math.max(...rows.map((r) => sum(r.values))));
+    const sx = (v) => (v / max) * (x1 - x0);
+    ticks(max, W < 460 ? 2 : 4).forEach((t, i) => {
+      line(s, x0 + sx(t), 0, x0 + sx(t), H - 20, i === 0 ? "--axis" : "--grid");
+      text(s, x0 + sx(t), H - 4, axisFmt(t), "tick", "middle");
+    });
+    rows.forEach((r, i) => {
+      const bh = 18, y = i * rowH + (rowH - bh) / 2, total = sum(r.values);
+      text(s, x0 - 10, y + bh / 2 + 4, r.label, "lbl", "end");
+      const last = r.values.reduce((li, v, j) => (v > 0 ? j : li), -1);
+      let acc = 0;
+      r.values.forEach((v, j) => {
+        if (v <= 0) return;
+        const gap = acc > 0 ? 2 : 0, x = x0 + sx(acc) + gap, w = Math.max(sx(v) - gap, 1.5);
+        fillPath(s, barPath(x, y, w, bh, j === last ? 4 : 0, "right"), r.color || series[j].color);
+        acc += v;
+      });
+      text(s, x0 + sx(total) + 6, y + bh / 2 + 4, fmt(total), "val");
+      const hit = node(s, "rect", { x: 0, y: i * rowH, width: W, height: rowH, class: "hit" });
+      hover(hit, () => tipHTML(r.label, series.length > 1
+        ? series.map((se, j) => [se.color, se.name, fmt(r.values[j])]).concat([[null, "Total", fmt(total)]])
+        : [[r.color || series[0].color, series[0].name, fmt(total)]].concat(r.extra || [])));
+    });
+  }
+
+  function columns(card, { cats, series, fmt, axisFmt, H = 250, valueLabel, label, tipTitle }) {
+    const box = $(".chart", card);
+    const W = Math.max(box.clientWidth, 260);
+    const left = 48, right = 8, top = 22, bottom = 28, pw = W - left - right, ph = H - top - bottom;
+    const totals = cats.map((_, i) => sum(series.map((se) => se.values[i])));
+    if (!(Math.max(...totals) > 0)) return emptyState(box);
+    const s = svgIn(box, W, H, label);
+    const max = niceMax(Math.max(...totals)), sy = (v) => (v / max) * ph;
+    ticks(max, 4).forEach((t, i) => {
+      const y = top + ph - sy(t);
+      line(s, left, y, W - right, y, i === 0 ? "--axis" : "--grid");
+      text(s, left - 8, y + 4, axisFmt(t), "tick", "end");
+    });
+    const band = pw / cats.length, bw = Math.max(4, Math.min(band * 0.62, 40));
+    const every = Math.ceil(cats.length / Math.max(1, Math.floor(pw / 52)));
+    cats.forEach((c, i) => {
+      const cx = left + band * i + band / 2;
+      const last = series.reduce((li, se, j) => (se.values[i] > 0 ? j : li), -1);
+      let acc = 0;
+      series.forEach((se, j) => {
+        const v = se.values[i];
+        if (v <= 0) return;
+        const gap = acc > 0 ? 2 : 0, h = Math.max(sy(v) - gap, 1.5), y = top + ph - sy(acc) - gap - h;
+        fillPath(s, barPath(cx - bw / 2, y, bw, h, j === last ? 4 : 0, "top"), se.color);
+        acc += v;
+      });
+      if (i % every === 0) text(s, cx, H - 8, c, "tick", "middle");
+      const vl = valueLabel && valueLabel(i);
+      if (vl) text(s, cx, top + ph - sy(totals[i]) - 6, vl, "val", "middle");
+      const hit = node(s, "rect", { x: left + band * i, y: 0, width: band, height: top + ph, class: "hit" });
+      hover(hit, () => tipHTML(tipTitle ? tipTitle(i) : c, series.map((se) => [se.color, se.name, fmt(se.values[i])])
+        .concat(series.length > 1 ? [[null, "Total", fmt(totals[i])]] : [])));
+    });
+  }
+
+  function scatter(card, { points, label }) {
+    const box = $(".chart", card);
+    if (!points.length) return emptyState(box);
+    const W = Math.max(box.clientWidth, 260), H = 320;
+    const left = 48, right = 12, top = 12, bottom = 44, pw = W - left - right, ph = H - top - bottom;
+    const s = svgIn(box, W, H, label);
+    const maxX = niceMax(Math.max(...points.map((p) => p.x)));
+    const sx = (v) => left + (v / maxX) * pw, sy = (v) => top + ph - ((v - 30) / 70) * ph;
+    [40, 60, 80, 100].forEach((t) => { line(s, left, sy(t), W - right, sy(t), "--grid"); text(s, left - 8, sy(t) + 4, t, "tick", "end"); });
+    line(s, left, top + ph, W - right, top + ph, "--axis");
+    ticks(maxX, W < 460 ? 2 : 4).forEach((t) => text(s, sx(t), top + ph + 16, kUSD(t), "tick", "middle"));
+    text(s, left + pw / 2, H - 4, "Transaction amount", "axis-title", "middle");
+    const yt = text(s, 12, top + ph / 2, "Risk score", "axis-title", "middle");
+    yt.setAttribute("transform", `rotate(-90 12 ${top + ph / 2})`);
+
+    const thr = line(s, left, sy(60), W - right, sy(60), "--ink-2");
+    thr.setAttribute("stroke-width", 1.25);
+    text(s, W - right, sy(60) - 6, "Flag threshold: 60", "val", "end");
+
+    const draw = (list, color) => list.forEach((p) => {
+      const c = node(s, "circle", { cx: sx(p.x), cy: sy(p.y), r: 4, "stroke-width": 1.5 });
+      c.style.fill = `var(${color})`; c.style.stroke = "var(--surface)";
+    });
+    draw(points.filter((p) => !p.fraud), "--legit");
+    draw(points.filter((p) => p.fraud), "--s2");
+
+    const ring = node(s, "circle", { r: 7, fill: "none", "stroke-width": 2, visibility: "hidden" });
+    ring.style.stroke = "var(--ink)";
+    const overlay = node(s, "rect", { x: left, y: top, width: pw, height: ph, fill: "transparent" });
+    overlay.addEventListener("pointermove", (e) => {
+      const b = s.getBoundingClientRect(), mx = e.clientX - b.left, my = e.clientY - b.top;
+      let best = null, bd = 24 * 24;
+      for (const p of points) {
+        const dx = sx(p.x) - mx, dy = sy(p.y) - my, d = dx * dx + dy * dy;
+        if (d < bd) { bd = d; best = p; }
+      }
+      if (!best) { ring.setAttribute("visibility", "hidden"); return hideTip(); }
+      ring.setAttribute("cx", sx(best.x)); ring.setAttribute("cy", sy(best.y)); ring.setAttribute("visibility", "visible");
+      showTip(tipHTML(best.id, [
+        [best.fraud ? "--s2" : "--legit", best.fraud ? "Fraud" : "Legitimate", best.outcome],
+        [null, "Amount", usd2.format(best.x)], [null, "Risk score", String(best.y)], [null, "Category", best.cat]]), e.clientX, e.clientY);
+    });
+    overlay.addEventListener("pointerleave", () => { ring.setAttribute("visibility", "hidden"); hideTip(); });
+  }
+
+  function kpis(el, items) {
+    el.innerHTML = items.map((k) =>
+      `<div class="kpi"><div class="k-label">${esc(k.label)}</div><div class="k-value">${esc(k.value)}</div>${k.note ? `<div class="k-note">${esc(k.note)}</div>` : ""}</div>`).join("");
+  }
+
+  // ------------------------------------------------------------------ data selection
+  const dict = (dim) => D.dictionaries[dim];
+  function matches(i) {
+    const c = D.columns;
+    for (const dim in S.filters) if (S.filters[dim] >= 0 && c[dim][i] !== S.filters[dim]) return false;
+    return true;
+  }
+  function selectedRows() {
+    const out = [];
+    for (let i = 0; i < D.rows; i++) if (matches(i)) out.push(i);
+    return out;
+  }
+
+  // ------------------------------------------------------------------ pages
+  function renderOverview() {
+    const c = D.columns, rows = selectedRows();
+    const W = D.weeks.length, types = dict("fraud_type"), states = dict("state"), tiers = dict("risk_tier");
+    const wPrev = Array(W).fill(0), wMiss = Array(W).fill(0);
+    const tPrev = Array(types.length).fill(0), tMiss = Array(types.length).fill(0);
+    const sExp = Array(states.length).fill(0), tierN = Array(tiers.length).fill(0);
+    let exposure = 0, prevented = 0, flagged = 0, tp = 0, fp = 0, legit = 0;
+    for (const i of rows) {
+      const amt = c.cents[i] / 100;
+      tierN[c.risk_tier[i]]++;
+      if (c.flagged[i]) { flagged++; c.fraud[i] ? tp++ : fp++; }
+      if (!c.fraud[i]) { legit++; continue; }
+      exposure += amt; sExp[c.state[i]] += amt;
+      if (c.flagged[i]) { prevented += amt; wPrev[c.week[i]] += amt; tPrev[c.fraud_type[i]] += amt; }
+      else { wMiss[c.week[i]] += amt; tMiss[c.fraud_type[i]] += amt; }
+    }
+
+    kpis($("#kpi-overview"), [
+      { label: "Fraud exposure", value: usd0.format(exposure), note: `${int.format(rows.length)} transactions` },
+      { label: "Fraud prevented", value: usd0.format(prevented), note: "flagged before loss" },
+      { label: "Prevention rate", value: pct(exposure ? prevented / exposure : NaN), note: "of fraud dollars" },
+      { label: "Flagged alerts", value: int.format(flagged), note: `${pct(rows.length ? flagged / rows.length : NaN, 2)} of transactions` },
+      { label: "Alert precision", value: pct(flagged ? tp / flagged : NaN), note: "alerts that are real fraud" },
+      { label: "False positive rate", value: pct(legit ? fp / legit : NaN, 2), note: "honest customers flagged" },
+    ]);
+
+    const SERIES = [{ name: "Prevented", color: "--s1" }, { name: "Missed", color: "--s2" }];
+    const weekLabel = (w) => new Date(w + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const cWeekly = $("#card-weekly");
+    legend(cWeekly, SERIES);
+    columns(cWeekly, {
+      cats: D.weeks.map(weekLabel),
+      series: [{ ...SERIES[0], values: wPrev }, { ...SERIES[1], values: wMiss }],
+      fmt: usd0.format, axisFmt: kUSD, label: "Weekly fraud dollars prevented vs missed",
+      tipTitle: (i) => "Week of " + weekLabel(D.weeks[i]),
+    });
+    table($(".tbl-wrap", cWeekly), ["Week of", "Prevented", "Missed"],
+      D.weeks.map((w, i) => ({ cells: [weekLabel(w), usd0.format(wPrev[i]), usd0.format(wMiss[i])] })), { num: [1, 2] });
+
+    const cAttack = $("#card-attack");
+    legend(cAttack, SERIES);
+    const attackRows = types.map((t, i) => ({ label: t, values: [tPrev[i], tMiss[i]] }))
+      .filter((r) => r.label !== "Legitimate" && sum(r.values) > 0).sort((a, b) => sum(b.values) - sum(a.values));
+    hbars(cAttack, { rows: attackRows, series: SERIES, fmt: usd0.format, axisFmt: kUSD, labelW: 130, label: "Fraud exposure by attack type" });
+    table($(".tbl-wrap", cAttack), ["Attack type", "Prevented", "Missed", "Catch rate ($)"],
+      attackRows.map((r) => ({ cells: [r.label, usd0.format(r.values[0]), usd0.format(r.values[1]), pct(r.values[0] / sum(r.values))] })), { num: [1, 2, 3] });
+
+    const cState = $("#card-state");
+    const stateRows = states.map((st, i) => ({ label: st, values: [sExp[i]] })).filter((r) => r.values[0] > 0)
+      .sort((a, b) => b.values[0] - a.values[0]).slice(0, 10);
+    hbars(cState, { rows: stateRows, series: [{ name: "Fraud exposure", color: "--s1" }], fmt: usd0.format, axisFmt: kUSD, labelW: 44, rowH: 28, label: "Fraud exposure by state" });
+    table($(".tbl-wrap", cState), ["State", "Fraud exposure"], stateRows.map((r) => ({ cells: [r.label, usd0.format(r.values[0])] })), { num: [1] });
+
+    const cTier = $("#card-tier");
+    const tierRows = ["Critical", "High", "Medium"].map((t) => {
+      const n = tierN[tiers.indexOf(t)] || 0;
+      return { label: t, values: [n], color: TIER_COLOR[t], extra: [[null, t === "Medium" ? "Watchlist" : "Sent to analysts", t === "Medium" ? "no" : "yes"]] };
+    });
+    hbars(cTier, { rows: tierRows, series: [{ name: "Transactions", color: "--s1" }], fmt: int.format, axisFmt: (v) => int.format(v), labelW: 76, label: "Transactions by risk tier" });
+    table($(".tbl-wrap", cTier), ["Risk tier", "Score", "Transactions"], tierRows.map((r) => ({
+      cells: [r.label, { Critical: "80 to 100", High: "60 to 79", Medium: "30 to 59" }[r.label], int.format(r.values[0])] })), { num: [2] });
+  }
+
+  function alertRecords() {
+    const c = D.columns, cats = dict("merchant_category"), tiers = dict("risk_tier"), outs = dict("outcome");
+    return D.alerts.filter((a) => matches(a[8])).map((a) => {
+      const i = a[8];
+      return {
+        id: a[0], customer: a[1], time: a[2], city: a[3], n1h: a[4], ratio: a[5], geo: a[6], dev: a[7],
+        amount: c.cents[i] / 100, cat: cats[c.merchant_category[i]], score: c.score[i], tier: tiers[c.risk_tier[i]],
+        outcome: outs[c.outcome[i]], fraud: !!c.fraud[i], flagged: !!c.flagged[i], hour: c.hour[i],
+      };
+    });
+  }
+
+  function renderAlerts() {
+    const c = D.columns, rows = selectedRows(), recs = alertRecords();
+    let flagged = 0, tp = 0, prevented = 0;
+    const hours = Array(24).fill(0);
+    for (const i of rows) {
+      if (!c.flagged[i]) continue;
+      flagged++; hours[c.hour[i]]++;
+      if (c.fraud[i]) { tp++; prevented += c.cents[i] / 100; }
+    }
+    kpis($("#kpi-alerts"), [
+      { label: "Reviewable transactions", value: int.format(recs.length), note: "risk score 30+" },
+      { label: "Flagged alerts", value: int.format(flagged), note: "score 60+, sent to analysts" },
+      { label: "Alert precision", value: pct(flagged ? tp / flagged : NaN), note: "alerts that are real fraud" },
+      { label: "Prevented per alert", value: usd2.format(flagged ? prevented / flagged : 0), note: "fraud dollars per review" },
+    ]);
+
+    const cScatter = $("#card-scatter");
+    legend(cScatter, [{ name: "Fraud", color: "--s2", dot: true }, { name: "Legitimate", color: "--legit", dot: true }]);
+    scatter(cScatter, {
+      points: recs.map((r) => ({ x: r.amount, y: r.score, fraud: r.fraud, id: r.id, outcome: r.outcome, cat: r.cat })),
+      label: "Risk score versus transaction amount",
+    });
+
+    const cHour = $("#card-hour");
+    const hourLabels = hours.map((_, h) => String(h));
+    columns(cHour, {
+      cats: hourLabels, series: [{ name: "Flagged alerts", color: "--s1", values: hours }],
+      fmt: int.format, axisFmt: (v) => int.format(v), H: 250, label: "Flagged alerts by hour of day",
+      tipTitle: (h) => `${String(h).padStart(2, "0")}:00 to ${String(h).padStart(2, "0")}:59`,
+    });
+    table($(".tbl-wrap", cHour), ["Hour", "Flagged alerts"], hours.map((n, h) => ({ cells: [`${String(h).padStart(2, "0")}:00`, int.format(n)] })), { num: [1] });
+
+    renderQueue(recs);
+  }
+
+  const QUEUE_COLS = [
+    { key: "id", label: "Transaction" }, { key: "time", label: "Time" }, { key: "customer", label: "Customer" },
+    { key: "amount", label: "Amount", num: true, fmt: (v) => usd2.format(v) }, { key: "cat", label: "Category" },
+    { key: "city", label: "City" }, { key: "score", label: "Risk score", num: true }, { key: "tier", label: "Tier" },
+    { key: "n1h", label: "Txns in 1h", num: true, hot: (v) => v >= 3 },
+    { key: "ratio", label: "Spend vs 30d avg", num: true, fmt: (v) => v.toFixed(1) + "x", hot: (v) => v >= 3 },
+    { key: "geo", label: "Travel speed", num: true, fmt: (v) => int.format(v) + " km/h", hot: (v) => v >= 900 },
+    { key: "dev", label: "Device age", num: true, fmt: (v) => v.toFixed(1) + " h", hot: (v) => v < 2 },
+    { key: "outcome", label: "Outcome" },
+  ];
+  const TIER_CHIPS = [["flagged", "Flagged (60+)"], ["Critical", "Critical"], ["High", "High"], ["Medium", "Medium"], ["all", "All reviewable"]];
+
+  function renderQueue(recs) {
+    const card = $("#card-queue");
+    const chips = $(".chips", card);
+    chips.innerHTML = TIER_CHIPS.map(([k, l]) => `<button class="chip" type="button" data-tier="${k}" aria-pressed="${S.tier === k}">${l}</button>`).join("");
+    const list = recs.filter((r) => S.tier === "all" || (S.tier === "flagged" ? r.flagged : r.tier === S.tier));
+    const { key, dir } = S.sort;
+    list.sort((a, b) => {
+      const x = a[key], y = b[key];
+      if (x == null) return 1; if (y == null) return -1;
+      return (x > y ? 1 : x < y ? -1 : 0) * dir || b.score - a.score;
+    });
+    const shown = list.slice(0, S.shown);
+    const head = QUEUE_COLS.map((col) => {
+      const sorted = key === col.key ? ` aria-sort="${dir > 0 ? "ascending" : "descending"}"` : "";
+      return `<th class="${col.num ? "num" : ""}"${sorted}><button type="button" data-sort="${col.key}">${esc(col.label)}</button></th>`;
+    }).join("");
+    const body = shown.map((r) => "<tr>" + QUEUE_COLS.map((col) => {
+      const v = r[col.key];
+      if (col.key === "tier") return `<td><span class="tier"><i style="background:var(${TIER_COLOR[v] || "--legit"})"></i>${esc(v)}</span></td>`;
+      if (v == null) return `<td class="num soft">n/a</td>`;
+      const cls = [col.num ? "num" : "", col.hot ? (col.hot(v) ? "hot" : "soft") : ""].join(" ");
+      return `<td class="${cls}">${esc(col.fmt ? col.fmt(v) : v)}</td>`;
+    }).join("") + "</tr>").join("");
+    $(".tbl-wrap", card).innerHTML = list.length
+      ? `<table class="tbl"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`
+      : `<div class="empty">No alerts match these filters</div>`;
+    const more = $(".more", card);
+    more.hidden = list.length <= S.shown;
+    more.textContent = `Show 25 more (${int.format(shown.length)} of ${int.format(list.length)})`;
+  }
+
+  function renderModel() {
+    const res = D.model.test_results;
+    const card = $("#card-scorecard");
+    table($(".tbl-wrap", card),
+      ["Model", "ROC-AUC", "PR-AUC", "Precision", "Recall", "False positive rate", "Alerts", "Fraud $ caught", "Share of fraud $"],
+      res.map((r) => ({
+        em: r.model === "insureguard_blend",
+        cells: [MODEL_NAMES[r.model], r.roc_auc.toFixed(3), r.pr_auc.toFixed(3), pct(r.precision), pct(r.recall),
+          pct(r.false_positive_rate, 2), int.format(r.flagged_txns), usd0.format(r.fraud_dollars_caught), pct(r.dollar_recall)],
+      })), { num: [1, 2, 3, 4, 5, 6, 7, 8] });
+
+    const cCompare = $("#card-compare");
+    const SERIES = [{ name: "Fraud dollars caught", color: "--s1" }, { name: "Alert precision", color: "--s2" }];
+    legend(cCompare, SERIES);
+    grouped(cCompare, res.map((r) => ({ label: MODEL_NAMES[r.model], values: [r.dollar_recall, r.precision] })), SERIES);
+
+    const scen = Object.keys(res[0].recall_by_scenario);
+    const heat = $("#card-scenarios .tbl-wrap");
+    const SHORT = { "rule: amount >= $500": "Rule", isolation_forest: "Isolation F.", xgboost: "XGBoost", insureguard_blend: "InsureGuard" };
+    heat.innerHTML = `<table class="tbl heat"><thead><tr><th>Attack type</th>${res.map((r) =>
+      `<th class="num" title="${esc(MODEL_NAMES[r.model])}">${esc(SHORT[r.model])}</th>`).join("")}</tr></thead><tbody>${scen.map((sc) =>
+      `<tr><td>${esc(title(sc))}</td>${res.map((r) => {
+        const v = r.recall_by_scenario[sc], step = Math.min(RAMP.length - 1, Math.round(v * (RAMP.length - 1)));
+        return `<td class="cell" style="background:${RAMP[step]};color:${step >= 4 ? "#ffffff" : "#0b0b0b"}">${pct(v, 0)}</td>`;
+      }).join("")}</tr>`).join("")}</tbody></table>`;
+
+    const c = D.columns, bandN = Array(10).fill(0), bandF = Array(10).fill(0);
+    let tp = 0, fn = 0, fp = 0, tn = 0;
+    for (let i = 0; i < D.rows; i++) {
+      const b = Math.min(9, Math.floor(c.score[i] / 10));
+      bandN[b]++; bandF[b] += c.fraud[i];
+      if (c.fraud[i]) c.flagged[i] ? tp++ : fn++; else c.flagged[i] ? fp++ : tn++;
+    }
+    const rate = bandN.map((n, b) => (n ? bandF[b] / n : 0));
+    const cBand = $("#card-band");
+    const bandLabel = (b) => (b === 9 ? "90+" : `${b * 10}`);
+    columns(cBand, {
+      cats: rate.map((_, b) => bandLabel(b)), series: [{ name: "Share that is fraud", color: "--s1", values: rate }],
+      fmt: (v) => pct(v, 2), axisFmt: (v) => pct(v, 0), label: "Share of transactions that are fraud by risk score band",
+      valueLabel: (b) => (b === 0 || b >= 6 ? pct(rate[b], b === 0 ? 2 : 0) : null),
+      tipTitle: (b) => `Score ${b * 10} to ${b === 9 ? 100 : b * 10 + 9}`,
+    });
+    table($(".tbl-wrap", cBand), ["Score band", "Transactions", "Fraud", "Share that is fraud"],
+      rate.map((r, b) => ({ cells: [bandLabel(b), int.format(bandN[b]), int.format(bandF[b]), pct(r, 2)] })), { num: [1, 2, 3] });
+
+    $("#card-confusion .confusion").innerHTML = `
+      <div></div><div class="h">Flagged (60+)</div><div class="h">Not flagged</div>
+      <div class="rh">Fraud</div>
+      <div class="cell"><div class="n">${int.format(tp)}</div><div class="d">Caught</div></div>
+      <div class="cell"><div class="n">${int.format(fn)}</div><div class="d">Missed</div></div>
+      <div class="rh">Legitimate</div>
+      <div class="cell"><div class="n">${int.format(fp)}</div><div class="d">False alarms</div></div>
+      <div class="cell"><div class="n">${int.format(tn)}</div><div class="d">Correctly cleared</div></div>`;
+  }
+
+  function grouped(card, rows, series) {
+    const box = $(".chart", card);
+    const W = Math.max(box.clientWidth, 260), lw = Math.min(150, W * 0.38), rowH = 50, bh = 14;
+    const H = rows.length * rowH + 24, x0 = lw, x1 = W - 52;
+    const s = svgIn(box, W, H, "Fraud dollars caught and alert precision by model");
+    const sx = (v) => v * (x1 - x0);
+    [0, 0.25, 0.5, 0.75, 1].forEach((t, i) => {
+      line(s, x0 + sx(t), 0, x0 + sx(t), H - 20, i === 0 ? "--axis" : "--grid");
+      if (W >= 460 || i % 2 === 0) text(s, x0 + sx(t), H - 4, pct(t, 0), "tick", "middle");
+    });
+    rows.forEach((r, i) => {
+      const yc = i * rowH + rowH / 2;
+      text(s, x0 - 10, yc + 4, r.label, "lbl", "end");
+      r.values.forEach((v, j) => {
+        const y = yc - bh - 1 + j * (bh + 2);
+        fillPath(s, barPath(x0, y, Math.max(sx(v), 1.5), bh, 4, "right"), series[j].color);
+        text(s, x0 + sx(v) + 6, y + bh - 3, pct(v), "val");
+      });
+      const hit = node(s, "rect", { x: 0, y: i * rowH, width: W, height: rowH, class: "hit" });
+      hover(hit, () => tipHTML(r.label, series.map((se, j) => [se.color, se.name, pct(r.values[j])])));
+    });
+  }
+
+  // ------------------------------------------------------------------ wiring
+  const RENDER = { overview: renderOverview, alerts: renderAlerts, model: renderModel };
+  function render() { hideTip(); RENDER[S.tab](); }
+
+  function setTab(tab) {
+    S.tab = tab;
+    $$(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
+    ["overview", "alerts", "model"].forEach((t) => { $("#tab-" + t).hidden = t !== tab; });
+    $("#filters").hidden = tab === "model";
+    $("#model-note").hidden = tab !== "model";
+    try { history.replaceState(null, "", "#" + tab); } catch (e) { /* ignore */ }
+    render();
+  }
+
+  function initFilters() {
+    $$("#filters select").forEach((sel) => {
+      const dim = sel.dataset.dim;
+      S.filters[dim] = -1;
+      sel.innerHTML = `<option value="-1">All</option>` + dict(dim).map((v, i) => `<option value="${i}">${esc(v)}</option>`).join("");
+      sel.addEventListener("change", () => { S.filters[dim] = Number(sel.value); S.shown = 25; render(); });
+    });
+    $("#reset").addEventListener("click", () => {
+      $$("#filters select").forEach((sel) => { sel.value = "-1"; S.filters[sel.dataset.dim] = -1; });
+      S.shown = 25; render();
+    });
+  }
+
+  function initTheme() {
+    const root = document.documentElement;
+    try { const saved = localStorage.getItem("ig-theme"); if (saved) root.dataset.theme = saved; } catch (e) { /* ignore */ }
+    $("#theme").addEventListener("click", () => {
+      const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+      root.dataset.theme = dark ? "light" : "dark";
+      try { localStorage.setItem("ig-theme", root.dataset.theme); } catch (e) { /* ignore */ }
+    });
+  }
+
+  document.addEventListener("click", (e) => {
+    const tabBtn = e.target.closest(".tabs button");
+    if (tabBtn) return setTab(tabBtn.dataset.tab);
+    const chip = e.target.closest(".chip");
+    if (chip) { S.tier = chip.dataset.tier; S.shown = 25; return renderQueue(alertRecords()); }
+    const sortBtn = e.target.closest("th button[data-sort]");
+    if (sortBtn) {
+      const k = sortBtn.dataset.sort;
+      S.sort = { key: k, dir: S.sort.key === k ? -S.sort.dir : (["id", "time", "customer", "cat", "city", "tier", "outcome"].includes(k) ? 1 : -1) };
+      return renderQueue(alertRecords());
+    }
+    if (e.target.closest("#card-queue .more")) { S.shown += 25; renderQueue(alertRecords()); }
+  });
+
+  let lastWidth = 0, raf = 0;
+  new ResizeObserver(() => {
+    const w = document.body.clientWidth;
+    if (!D || w === lastWidth) return;
+    lastWidth = w;
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(render);
+  }).observe(document.body);
+
+  initTheme();
+  fetch("data/insureguard.json")
+    .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then((data) => {
+      D = data;
+      $("#rowcount").textContent = int.format(D.rows);
+      $("#loading").hidden = true;
+      initFilters();
+      const hash = location.hash.slice(1);
+      setTab(RENDER[hash] ? hash : "overview");
+      lastWidth = document.body.clientWidth;
+    })
+    .catch(() => { $("#loading").textContent = "Could not load dashboard data. Open this page through a web server (for example GitHub Pages)."; });
+})();
+</script>
+</body>
+</html>
