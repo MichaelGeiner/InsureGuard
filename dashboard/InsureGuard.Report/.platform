@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "Report",
+    "displayName": "InsureGuard"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "a1fe7cae-0e22-49c9-9297-48d3f69a180c"
+  }
+}

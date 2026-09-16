@@ -1,0 +1,301 @@
+table fact_transactions
+	lineageTag: 5a4ea677-7e9b-4bc1-aa0c-0005a930e12a
+
+	column transaction_id
+		dataType: string
+		lineageTag: 28219d1f-bafd-430d-9cac-1af70816b5d8
+		summarizeBy: none
+		sourceColumn: transaction_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column customer_id
+		dataType: string
+		lineageTag: 830c14b8-ae30-439a-be77-81e4ff6c3216
+		summarizeBy: none
+		sourceColumn: customer_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column device_id
+		dataType: string
+		lineageTag: ff8979b5-a161-44b1-a098-73fab88794b1
+		summarizeBy: none
+		sourceColumn: device_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column txn_timestamp
+		dataType: dateTime
+		formatString: General Date
+		lineageTag: 8894316b-f724-48bf-928f-cf3e27c7174d
+		summarizeBy: none
+		sourceColumn: txn_timestamp
+
+		variation Variation
+			isDefault
+			relationship: b8ebb9af-f460-4519-8b7a-d410911143f2
+			defaultHierarchy: LocalDateTable_487e3b7a-d81a-4c69-b272-9c5c61b7fd0f.'Date Hierarchy'
+
+		annotation SummarizationSetBy = Automatic
+
+	column txn_date
+		dataType: dateTime
+		formatString: Long Date
+		lineageTag: 5cde922e-d369-490d-b6f6-3bae543be16e
+		summarizeBy: none
+		sourceColumn: txn_date
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	column txn_hour
+		dataType: int64
+		formatString: 0
+		lineageTag: 57002223-d48f-484e-a41a-f923cad5f60c
+		summarizeBy: sum
+		sourceColumn: txn_hour
+
+		annotation SummarizationSetBy = Automatic
+
+	column amount
+		dataType: double
+		lineageTag: 13fb2014-f357-482c-b252-fd2309edca57
+		summarizeBy: sum
+		sourceColumn: amount
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column merchant_category
+		dataType: string
+		lineageTag: 6484b0b5-a17e-4cd4-bb0f-44fcb7d881f5
+		summarizeBy: none
+		sourceColumn: merchant_category
+
+		annotation SummarizationSetBy = Automatic
+
+	column channel
+		dataType: string
+		lineageTag: e9a32c26-4e22-48a0-ab3d-f8a9caf351c8
+		summarizeBy: none
+		sourceColumn: channel
+
+		annotation SummarizationSetBy = Automatic
+
+	column city
+		dataType: string
+		lineageTag: ba8aca11-038f-4539-acd5-82cc5e5765a3
+		summarizeBy: none
+		sourceColumn: city
+
+		annotation SummarizationSetBy = Automatic
+
+	column state
+		dataType: string
+		lineageTag: be0ef189-2c38-4a85-af92-c3ad74ccf517
+		summarizeBy: none
+		sourceColumn: state
+
+		annotation SummarizationSetBy = Automatic
+
+	column latitude
+		dataType: double
+		lineageTag: 24ecd735-46cc-45d3-93ff-4e4fd22e9463
+		summarizeBy: sum
+		sourceColumn: latitude
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column longitude
+		dataType: double
+		lineageTag: 40afe31b-390b-435e-81c0-aefb9286300c
+		summarizeBy: sum
+		sourceColumn: longitude
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column device_type
+		dataType: string
+		lineageTag: 4a0fb17b-d327-4f32-a168-3ad7f9869a6a
+		summarizeBy: none
+		sourceColumn: device_type
+
+		annotation SummarizationSetBy = Automatic
+
+	column is_fraud
+		dataType: boolean
+		formatString: """TRUE"";""TRUE"";""FALSE"""
+		lineageTag: 2ab8d1e2-7947-4ea0-8cc5-bd233b90cb36
+		summarizeBy: none
+		sourceColumn: is_fraud
+
+		annotation SummarizationSetBy = Automatic
+
+	column fraud_type
+		dataType: string
+		lineageTag: 9cf99d61-29c8-4654-92ee-2a8abfcb88ca
+		summarizeBy: none
+		sourceColumn: fraud_type
+
+		annotation SummarizationSetBy = Automatic
+
+	column anomaly_risk_score
+		dataType: int64
+		formatString: 0
+		lineageTag: 2e608d94-68e8-4da4-99cb-881511b30de8
+		summarizeBy: sum
+		sourceColumn: anomaly_risk_score
+
+		annotation SummarizationSetBy = Automatic
+
+	column risk_tier
+		dataType: string
+		lineageTag: 78a34bc7-47ab-4d48-a890-ae7e3d73c15e
+		summarizeBy: none
+		sourceColumn: risk_tier
+		sortByColumn: risk_tier_order
+
+		changedProperty = SortByColumn
+
+		annotation SummarizationSetBy = Automatic
+
+	column risk_tier_order
+		dataType: int64
+		formatString: 0
+		lineageTag: b046d626-0f63-4adc-a90d-95502a98c2b3
+		summarizeBy: sum
+		sourceColumn: risk_tier_order
+
+		annotation SummarizationSetBy = Automatic
+
+	column score_band
+		dataType: int64
+		formatString: 0
+		lineageTag: 6fd045dc-3e0c-439a-97a8-63f90557d8bc
+		summarizeBy: sum
+		sourceColumn: score_band
+
+		annotation SummarizationSetBy = Automatic
+
+	column xgb_fraud_probability
+		dataType: double
+		lineageTag: 04f8f6db-e37e-4a21-8ece-5c301bea916e
+		summarizeBy: sum
+		sourceColumn: xgb_fraud_probability
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column isolation_anomaly_score
+		dataType: double
+		lineageTag: aed47270-2fa6-4ded-8c5b-ee1a747b8aa7
+		summarizeBy: sum
+		sourceColumn: isolation_anomaly_score
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column is_flagged
+		dataType: boolean
+		formatString: """TRUE"";""TRUE"";""FALSE"""
+		lineageTag: 26d62fcf-ee7f-403d-b20f-143eb2eebaaf
+		summarizeBy: none
+		sourceColumn: is_flagged
+
+		annotation SummarizationSetBy = Automatic
+
+	column outcome
+		dataType: string
+		lineageTag: 69eb6b82-a696-45e4-a571-3b2a62f82a27
+		summarizeBy: none
+		sourceColumn: outcome
+
+		annotation SummarizationSetBy = Automatic
+
+	column model_period
+		dataType: string
+		lineageTag: d0ab9ed5-7ef6-4609-9f3e-6f7a9981aee9
+		summarizeBy: none
+		sourceColumn: model_period
+
+		annotation SummarizationSetBy = Automatic
+
+	column model_version
+		dataType: string
+		lineageTag: 9e216c91-1c87-4bfa-91eb-a8d3f575a4aa
+		summarizeBy: none
+		sourceColumn: model_version
+
+		annotation SummarizationSetBy = Automatic
+
+	column txn_count_1h
+		dataType: int64
+		formatString: 0
+		lineageTag: 9a478115-d98d-40f4-805f-1781cd39dd1d
+		summarizeBy: sum
+		sourceColumn: txn_count_1h
+
+		annotation SummarizationSetBy = Automatic
+
+	column amount_to_avg_30d_ratio
+		dataType: double
+		lineageTag: 0de14014-4275-4c25-a7a5-62413f1045f7
+		summarizeBy: sum
+		sourceColumn: amount_to_avg_30d_ratio
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column geo_velocity_kmh
+		dataType: double
+		lineageTag: 29fc4c6e-11d7-4930-845d-8a8550849344
+		summarizeBy: sum
+		sourceColumn: geo_velocity_kmh
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column km_from_home
+		dataType: double
+		lineageTag: 317d8f97-5781-4235-9e64-c4145894e8fa
+		summarizeBy: sum
+		sourceColumn: km_from_home
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	column device_age_hours
+		dataType: double
+		lineageTag: f069abfd-e127-4f2f-b6ad-a9936f6c6fed
+		summarizeBy: sum
+		sourceColumn: device_age_hours
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	partition fact_transactions = m
+		mode: import
+		source =
+				let
+				    Source = PostgreSQL.Database("localhost", "insureguard"),
+				    bi_fact_transactions = Source{[Schema="bi",Item="fact_transactions"]}[Data]
+				in
+				    bi_fact_transactions
+
+	changedProperty = Name
+
+	annotation PBI_ResultType = Table
+

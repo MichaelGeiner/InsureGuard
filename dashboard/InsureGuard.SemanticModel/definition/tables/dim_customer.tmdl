@@ -1,0 +1,81 @@
+table dim_customer
+	lineageTag: dc0ea432-ce86-4018-a247-c7cc0ba75e9c
+
+	column customer_id
+		dataType: string
+		lineageTag: 65608ceb-c8f7-483e-a9bd-0063f1cb3a1a
+		summarizeBy: none
+		sourceColumn: customer_id
+
+		annotation SummarizationSetBy = Automatic
+
+	column home_city
+		dataType: string
+		lineageTag: f047cd78-9c01-4db5-ab79-d63254d91274
+		summarizeBy: none
+		sourceColumn: home_city
+
+		annotation SummarizationSetBy = Automatic
+
+	column home_state
+		dataType: string
+		lineageTag: 29f7bc81-3fef-4348-b1cb-060c9c0ef8c0
+		summarizeBy: none
+		sourceColumn: home_state
+
+		annotation SummarizationSetBy = Automatic
+
+	column customer_segment
+		dataType: string
+		lineageTag: 4b521df6-fd85-499b-bf40-a00e15b5660b
+		summarizeBy: none
+		sourceColumn: customer_segment
+
+		annotation SummarizationSetBy = Automatic
+
+	column age
+		dataType: int64
+		formatString: 0
+		lineageTag: 230bcdcd-cfcf-4635-b2d2-457365dae99a
+		summarizeBy: sum
+		sourceColumn: age
+
+		annotation SummarizationSetBy = Automatic
+
+	column age_band
+		dataType: string
+		lineageTag: d9272c31-eba8-4719-8008-0d358ff5ce45
+		summarizeBy: none
+		sourceColumn: age_band
+
+		annotation SummarizationSetBy = Automatic
+
+	column signup_date
+		dataType: dateTime
+		formatString: Long Date
+		lineageTag: c7d88315-0b9c-479f-b5b7-16d745d6b69b
+		summarizeBy: none
+		sourceColumn: signup_date
+
+		variation Variation
+			isDefault
+			relationship: bbf3cfa4-fa6c-4438-89b2-ced17f0f1f68
+			defaultHierarchy: LocalDateTable_c232f4e1-5ffe-4f43-b026-551b0be04d75.'Date Hierarchy'
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	partition dim_customer = m
+		mode: import
+		source =
+				let
+				    Source = PostgreSQL.Database("localhost", "insureguard"),
+				    bi_dim_customer = Source{[Schema="bi",Item="dim_customer"]}[Data]
+				in
+				    bi_dim_customer
+
+	changedProperty = Name
+
+	annotation PBI_ResultType = Table
+

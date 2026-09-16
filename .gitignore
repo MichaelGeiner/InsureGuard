@@ -4,3 +4,8 @@ __pycache__/
 *.pyc
 .env
 models/
+
+# Power BI project: local-only files
+**/.pbi/localSettings.json
+**/.pbi/cache.abf
+*.pbix

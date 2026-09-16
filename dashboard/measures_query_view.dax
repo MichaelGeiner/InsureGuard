@@ -1,0 +1,50 @@
+// InsureGuard | all measures in one script for Power BI's DAX query view.
+// 1. Paste into DAX query view, 2. click "Run" to preview headline numbers,
+// 3. click "Update model with changes" to save the measures into _Measures.
+// (Same measures as measures.dax, which documents each one.)
+
+DEFINE
+    MEASURE '_Measures'[Total Transactions] = COUNTROWS ( fact_transactions )
+    MEASURE '_Measures'[Total Volume] = SUM ( fact_transactions[amount] )
+
+    MEASURE '_Measures'[Fraud Transactions] = CALCULATE ( [Total Transactions], fact_transactions[is_fraud] = TRUE () )
+    MEASURE '_Measures'[Fraud Exposure] = CALCULATE ( [Total Volume], fact_transactions[is_fraud] = TRUE () )
+    MEASURE '_Measures'[Fraud Rate] = DIVIDE ( [Fraud Transactions], [Total Transactions] )
+
+    MEASURE '_Measures'[Fraud Prevented] = CALCULATE ( [Total Volume], fact_transactions[outcome] = "Fraud Prevented" )
+    MEASURE '_Measures'[Fraud Missed] = CALCULATE ( [Total Volume], fact_transactions[outcome] = "Fraud Missed" )
+    MEASURE '_Measures'[Prevention Rate] = DIVIDE ( [Fraud Prevented], [Fraud Exposure] )
+
+    MEASURE '_Measures'[Flagged Alerts] = CALCULATE ( [Total Transactions], fact_transactions[is_flagged] = TRUE () )
+    MEASURE '_Measures'[Critical Alerts] = CALCULATE ( [Total Transactions], fact_transactions[risk_tier] = "Critical" )
+    MEASURE '_Measures'[Frauds Caught] = CALCULATE ( [Total Transactions], fact_transactions[outcome] = "Fraud Prevented" )
+    MEASURE '_Measures'[False Alarms] = CALCULATE ( [Total Transactions], fact_transactions[outcome] = "False Alarm" )
+    MEASURE '_Measures'[Alert Precision] = DIVIDE ( [Frauds Caught], [Flagged Alerts] )
+    MEASURE '_Measures'[Fraud Catch Rate] = DIVIDE ( [Frauds Caught], [Fraud Transactions] )
+    MEASURE '_Measures'[False Positive Rate] =
+        DIVIDE ( [False Alarms], CALCULATE ( [Total Transactions], fact_transactions[is_fraud] = FALSE () ) )
+    MEASURE '_Measures'[Avg Risk Score] = AVERAGE ( fact_transactions[anomaly_risk_score] )
+
+    MEASURE '_Measures'[Review Cost] = [Flagged Alerts] * 5
+    MEASURE '_Measures'[Net Savings] = [Fraud Prevented] - [Review Cost]
+    MEASURE '_Measures'[Fraud Prevented per Alert] = DIVIDE ( [Fraud Prevented], [Flagged Alerts] )
+
+    MEASURE '_Measures'[Report Subtitle] =
+        "Model " & SELECTEDVALUE ( fact_transactions[model_version], "v1.0" )
+            & "  |  " & SELECTEDVALUE ( fact_transactions[model_period], "All periods" )
+            & "  |  " & FORMAT ( [Total Transactions], "#,0" ) & " transactions scored"
+
+// Preview: live-period headline numbers. Expect roughly
+// exposure 41,998 | prevented 31,711 | prevention 0.755 | alerts 361 | precision 0.850 | FPR 0.0016
+EVALUATE
+CALCULATETABLE (
+    ROW (
+        "Fraud Exposure", [Fraud Exposure],
+        "Fraud Prevented", [Fraud Prevented],
+        "Prevention Rate", [Prevention Rate],
+        "Flagged Alerts", [Flagged Alerts],
+        "Alert Precision", [Alert Precision],
+        "False Positive Rate", [False Positive Rate]
+    ),
+    fact_transactions[model_period] = "Live (May to Jun)"
+)

@@ -1,0 +1,123 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.4.0/schema.json",
+  "name": "ig_kpi_cards",
+  "position": {
+    "x": 40,
+    "y": 140,
+    "z": 4000,
+    "height": 170,
+    "width": 1840,
+    "tabOrder": 4000
+  },
+  "visual": {
+    "visualType": "cardVisual",
+    "query": {
+      "queryState": {
+        "Data": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Measures"
+                    }
+                  },
+                  "Property": "Fraud Exposure"
+                }
+              },
+              "queryRef": "_Measures.Fraud Exposure",
+              "nativeQueryRef": "Fraud Exposure"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Measures"
+                    }
+                  },
+                  "Property": "Fraud Prevented"
+                }
+              },
+              "queryRef": "_Measures.Fraud Prevented",
+              "nativeQueryRef": "Fraud Prevented"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Measures"
+                    }
+                  },
+                  "Property": "Prevention Rate"
+                }
+              },
+              "queryRef": "_Measures.Prevention Rate",
+              "nativeQueryRef": "Prevention Rate"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Measures"
+                    }
+                  },
+                  "Property": "Flagged Alerts"
+                }
+              },
+              "queryRef": "_Measures.Flagged Alerts",
+              "nativeQueryRef": "Flagged Alerts"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Measures"
+                    }
+                  },
+                  "Property": "Alert Precision"
+                }
+              },
+              "queryRef": "_Measures.Alert Precision",
+              "nativeQueryRef": "Alert Precision"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Measures"
+                    }
+                  },
+                  "Property": "False Positive Rate"
+                }
+              },
+              "queryRef": "_Measures.False Positive Rate",
+              "nativeQueryRef": "False Positive Rate"
+            }
+          ]
+        }
+      }
+    },
+    "objects": {
+      "layout": [
+        {
+          "properties": {
+            "maxTiles": {
+              "expr": {
+                "Literal": {
+                  "Value": "6D"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

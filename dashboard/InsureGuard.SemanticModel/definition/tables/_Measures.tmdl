@@ -1,0 +1,110 @@
+table _Measures
+	lineageTag: 6a6ba16e-af44-4e47-905f-2e65994ba5b3
+
+	measure 'Total Transactions' = COUNTROWS ( fact_transactions )
+		formatString: #,0
+		lineageTag: a8452a20-26c7-4670-980a-45c1e46a72a8
+
+	measure 'Total Volume' = SUM ( fact_transactions[amount] )
+		formatString: \$#,0;(\$#,0);\$#,0
+		lineageTag: c568c1d9-d4f6-40a4-88ca-2bac2ee79e8b
+
+	measure 'Fraud Transactions' = CALCULATE ( [Total Transactions], fact_transactions[is_fraud] = TRUE () )
+		formatString: #,0
+		lineageTag: 0cc33d8f-1cd2-48fe-8517-297bc198ed18
+
+	measure 'Fraud Exposure' = CALCULATE ( [Total Volume], fact_transactions[is_fraud] = TRUE () )
+		formatString: \$#,0;(\$#,0);\$#,0
+		lineageTag: 28c9dc7b-ada9-49c2-9f58-47c9bc33ded2
+
+	measure 'Fraud Rate' = DIVIDE ( [Fraud Transactions], [Total Transactions] )
+		formatString: 0.00%;-0.00%;0.00%
+		lineageTag: c02f3719-3860-4288-b7be-8c7021ef7fd2
+
+	measure 'Fraud Prevented' = CALCULATE ( [Total Volume], fact_transactions[outcome] = "Fraud Prevented" )
+		formatString: \$#,0;(\$#,0);\$#,0
+		lineageTag: 0a8fe0e7-3898-4119-b170-4217cc2cc47c
+
+	measure 'Fraud Missed' = CALCULATE ( [Total Volume], fact_transactions[outcome] = "Fraud Missed" )
+		formatString: \$#,0;(\$#,0);\$#,0
+		lineageTag: bf599aa0-06ea-4678-9387-065f23aa40f9
+
+	measure 'Prevention Rate' = DIVIDE ( [Fraud Prevented], [Fraud Exposure] )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: 46735dfa-eddb-4c62-b70c-573f49a037c2
+
+	measure 'Flagged Alerts' = CALCULATE ( [Total Transactions], fact_transactions[is_flagged] = TRUE () )
+		formatString: #,0
+		lineageTag: 5a210316-357a-4b4d-8b51-45537f1100eb
+
+	measure 'Critical Alerts' = CALCULATE ( [Total Transactions], fact_transactions[risk_tier] = "Critical" )
+		formatString: #,0
+		lineageTag: e7c71f8e-b525-4092-beb2-9a85eb1b1e2f
+
+	measure 'Frauds Caught' = CALCULATE ( [Total Transactions], fact_transactions[outcome] = "Fraud Prevented" )
+		formatString: #,0
+		lineageTag: c39e07cf-1ba4-438e-8ca9-9eae2c0e9b12
+
+	measure 'False Alarms' = CALCULATE ( [Total Transactions], fact_transactions[outcome] = "False Alarm" )
+		formatString: #,0
+		lineageTag: a54af452-7929-46e4-bd5c-c4acc449409d
+
+	measure 'Alert Precision' = DIVIDE ( [Frauds Caught], [Flagged Alerts] )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: 1f707823-a4df-46d2-ada0-25f954c06db4
+
+	measure 'Fraud Catch Rate' = DIVIDE ( [Frauds Caught], [Fraud Transactions] )
+		formatString: 0.0%;-0.0%;0.0%
+		lineageTag: 85168b9c-dfb2-40f8-89e0-1ea86810f6cb
+
+	measure 'False Positive Rate' = ```
+			
+			        DIVIDE ( [False Alarms], CALCULATE ( [Total Transactions], fact_transactions[is_fraud] = FALSE () ) )
+			```
+		formatString: 0.00%;-0.00%;0.00%
+		lineageTag: 8904962a-d70c-42ef-bca7-40bdfb8dd20c
+
+	measure 'Avg Risk Score' = AVERAGE ( fact_transactions[anomaly_risk_score] )
+		formatString: 0.0
+		lineageTag: cd4a39c2-a856-481a-9561-f68e82d834ae
+
+	measure 'Review Cost' = [Flagged Alerts] * 5
+		formatString: \$#,0;(\$#,0);\$#,0
+		lineageTag: 6a93da0b-cca3-42ce-879e-2a51e49a2e6c
+
+	measure 'Net Savings' = [Fraud Prevented] - [Review Cost]
+		formatString: \$#,0;(\$#,0);\$#,0
+		lineageTag: ba61dd3b-51e0-4d24-987c-300869245985
+
+	measure 'Fraud Prevented per Alert' = DIVIDE ( [Fraud Prevented], [Flagged Alerts] )
+		formatString: \$#,0.00;(\$#,0.00);\$#,0.00
+		lineageTag: 4f1cdb57-4ce0-4aa0-b755-8b327def1343
+
+	measure 'Report Subtitle' = ```
+			
+			        "Model " & SELECTEDVALUE ( fact_transactions[model_version], "v1.0" )
+			            & "  |  " & SELECTEDVALUE ( fact_transactions[model_period], "All periods" )
+			            & "  |  " & FORMAT ( [Total Transactions], "#,0" ) & " transactions scored"
+			```
+		lineageTag: e868b5de-2e12-4bb2-aacc-a00a489f3414
+
+	column Column1
+		dataType: string
+		isHidden
+		lineageTag: a9b0d8fe-3142-40a4-97ac-2dcf1ade4d00
+		summarizeBy: none
+		sourceColumn: Column1
+
+		annotation SummarizationSetBy = Automatic
+
+	partition _Measures = m
+		mode: import
+		source =
+				let
+				    Source = Table.FromRows(Json.Document(Binary.Decompress(Binary.FromText("i44FAA==", BinaryEncoding.Base64), Compression.Deflate)), let _t = ((type nullable text) meta [Serialized.Text = true]) in type table [Column1 = _t]),
+				    #"Changed Type" = Table.TransformColumnTypes(Source,{{"Column1", type text}})
+				in
+				    #"Changed Type"
+
+	annotation PBI_ResultType = Table
+

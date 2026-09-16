@@ -1,0 +1,54 @@
+table scenario_recall
+	lineageTag: 24fb2e2c-4f99-43bf-8bf2-fa0415146ec9
+
+	column model
+		dataType: string
+		lineageTag: a47eef19-3075-40e2-b3f9-ae692b4d9ea7
+		summarizeBy: none
+		sourceColumn: model
+		sortByColumn: sort_order
+
+		changedProperty = SortByColumn
+
+		annotation SummarizationSetBy = Automatic
+
+	column sort_order
+		dataType: int64
+		formatString: 0
+		lineageTag: 510111de-3895-40c9-8f09-19a8bbedb86a
+		summarizeBy: sum
+		sourceColumn: sort_order
+
+		annotation SummarizationSetBy = Automatic
+
+	column fraud_type
+		dataType: string
+		lineageTag: 96a18c18-e288-4a6b-bd09-591744b5afe6
+		summarizeBy: none
+		sourceColumn: fraud_type
+
+		annotation SummarizationSetBy = Automatic
+
+	column recall_rate
+		dataType: double
+		lineageTag: 8a469dc5-f600-4f21-ba7d-c20d59d5a6b9
+		summarizeBy: sum
+		sourceColumn: recall_rate
+
+		annotation SummarizationSetBy = Automatic
+
+		annotation PBI_FormatHint = {"isGeneralNumber":true}
+
+	partition scenario_recall = m
+		mode: import
+		source =
+				let
+				    Source = PostgreSQL.Database("localhost", "insureguard"),
+				    bi_scenario_recall = Source{[Schema="bi",Item="scenario_recall"]}[Data]
+				in
+				    bi_scenario_recall
+
+	changedProperty = Name
+
+	annotation PBI_ResultType = Table
+

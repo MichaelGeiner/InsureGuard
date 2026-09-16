@@ -1,0 +1,18 @@
+relationship bbf3cfa4-fa6c-4438-89b2-ced17f0f1f68
+	joinOnDateBehavior: datePartOnly
+	fromColumn: dim_customer.signup_date
+	toColumn: LocalDateTable_c232f4e1-5ffe-4f43-b026-551b0be04d75.Date
+
+relationship b8ebb9af-f460-4519-8b7a-d410911143f2
+	joinOnDateBehavior: datePartOnly
+	fromColumn: fact_transactions.txn_timestamp
+	toColumn: LocalDateTable_487e3b7a-d81a-4c69-b272-9c5c61b7fd0f.Date
+
+relationship AutoDetected_bbbc1331-379e-4a9b-9603-e8db886ac9e5
+	fromColumn: fact_transactions.customer_id
+	toColumn: dim_customer.customer_id
+
+relationship 7f68cf20-d1e2-9db6-71fe-a63c7b83a5af
+	fromColumn: fact_transactions.txn_date
+	toColumn: dim_date.date
+

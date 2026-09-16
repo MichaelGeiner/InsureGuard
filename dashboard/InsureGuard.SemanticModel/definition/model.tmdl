@@ -1,0 +1,27 @@
+model Model
+	culture: en-US
+	defaultPowerBIDataSourceVersion: powerBI_V3
+	sourceQueryCulture: en-IL
+	valueFilterBehavior: independent
+	dataAccessOptions
+		legacyRedirects
+		returnErrorValuesAsNull
+
+annotation __PBI_TimeIntelligenceEnabled = 1
+
+annotation PBI_QueryOrder = ["dim_customer","dim_date","fact_transactions","model_performance","scenario_recall","_Measures"]
+
+annotation PBI_ProTooling = ["DaxQueryView_Desktop","DevMode"]
+
+ref table dim_customer
+ref table DateTableTemplate_b375b228-67d0-4a0c-ac44-42ce9d6a9326
+ref table LocalDateTable_c232f4e1-5ffe-4f43-b026-551b0be04d75
+ref table dim_date
+ref table fact_transactions
+ref table LocalDateTable_487e3b7a-d81a-4c69-b272-9c5c61b7fd0f
+ref table model_performance
+ref table scenario_recall
+ref table _Measures
+
+ref cultureInfo en-US
+
