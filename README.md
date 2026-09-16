@@ -2,7 +2,9 @@
 
 **End-to-end financial fraud and anomaly detection pipeline:** synthetic transaction data, PostgreSQL feature engineering, machine learning risk scoring, and an executive fraud exposure dashboard.
 
-> Status: Step 3 of 5 complete (data, SQL features, ML risk scoring). Built in public, step by step.
+> Status: Step 4 of 5 complete (data, SQL features, ML risk scoring, Power BI dashboard). Built in public, step by step.
+
+![InsureGuard executive dashboard](docs/executive-overview.png)
 
 ## Results at a glance
 
@@ -107,6 +109,24 @@ Recall by scenario: card testing 96%, impossible travel 88%, account takeover 82
 
 Scores are written to `insureguard.txn_risk_scores` for the dashboard, and full metrics to [`reports/model_metrics.json`](reports/model_metrics.json).
 
+## Step 4: Power BI dashboard
+
+A three-page report on a star-schema semantic model (`fact_transactions` with customer and date dimensions) built from the reporting views in [`sql/04_bi_views.sql`](sql/04_bi_views.sql), with 20 DAX measures ([`dashboard/measures.dax`](dashboard/measures.dax)). The report is saved as a **Power BI Project (PBIP/PBIR)**, so every page, visual and measure is a readable text file under version control in [`dashboard/`](dashboard).
+
+Executive pages are filtered to the out-of-sample live period so the headline numbers reflect real model performance, not training fit.
+
+| Page | Audience | Highlights |
+|---|---|---|
+| **Executive Overview** | Leadership | Fraud exposure, dollars prevented, prevention rate, alert precision, weekly prevented vs missed trend, exposure by attack type and state |
+| **Alert Investigation** | Fraud analysts | Alert queue sorted by risk score with the behavioral drivers behind each flag (velocity, spend ratio, geo speed, device age), risk vs amount scatter, alerts by hour |
+| **Model Performance** | Data science / audit | Scorecard vs the amount rule, catch rate by attack type, confusion matrix, fraud rate by score band |
+
+![Alert investigation page](docs/alert-investigation.png)
+
+![Model performance page](docs/model-performance.png)
+
+The fraud-rate-by-score chart is the clearest proof the score is meaningful: **0.03%** of transactions scoring 0 to 9 are fraud, versus **96%+** of those scoring 80 or higher.
+
 ## Quick start
 
 ```bash
@@ -116,26 +136,39 @@ python src/generate_data.py     # Step 1: writes data/raw/*.csv
 python src/load_to_postgres.py  # Step 1: schema + bulk load
 python src/build_features.py    # Step 2: feature table + validation report
 python src/train_model.py       # Step 3: train, evaluate, write risk scores
+python src/build_bi.py          # Step 4: reporting views for Power BI
 ```
+
+Then open `dashboard/InsureGuard.pbip` in Power BI Desktop and refresh.
 
 ## Project structure
 
 ```
 InsureGuard/
+├── dashboard/
+│   ├── InsureGuard.pbip           Power BI project (open in Power BI Desktop)
+│   ├── InsureGuard.Report/        pages and visuals as JSON (PBIR)
+│   ├── InsureGuard.SemanticModel/ tables, relationships, measures as TMDL
+│   ├── measures.dax               DAX measures, documented
+│   ├── insureguard_theme.json     report color theme
+│   └── DASHBOARD_SPEC.md          page-by-page dashboard specification
+├── docs/                          dashboard screenshots
 ├── reports/
 │   └── model_metrics.json         test-period metrics + feature importance
 ├── sql/
 │   ├── 01_schema.sql              star schema DDL
 │   ├── 02_features.sql            window-function feature engineering
-│   └── 03_feature_validation.sql  per-scenario feature medians
+│   ├── 03_feature_validation.sql  per-scenario feature medians
+│   └── 04_bi_views.sql            reporting layer for Power BI
 └── src/
     ├── db.py                      shared connection helpers
     ├── generate_data.py           synthetic data generator
     ├── load_to_postgres.py        COPY-based bulk loader
     ├── build_features.py          runs feature SQL + prints validation
-    └── train_model.py             Isolation Forest + XGBoost risk scoring
+    ├── train_model.py             Isolation Forest + XGBoost risk scoring
+    └── build_bi.py                builds the bi schema for the dashboard
 ```
 
 ## Tech stack
 
-Python (pandas, NumPy, scikit-learn, XGBoost), PostgreSQL 18, SQL window functions, Power BI
+Python (pandas, NumPy, scikit-learn, XGBoost), PostgreSQL 18, SQL window functions, Power BI (DAX, star schema, PBIP), Git
